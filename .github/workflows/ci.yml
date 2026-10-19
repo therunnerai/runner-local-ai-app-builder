@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# A new push to the same branch cancels the run still queued for the old one,
+# so a busy runner queue never spends minutes on a commit nobody will merge.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     name: Type-check and build
