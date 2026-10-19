@@ -1,0 +1,20 @@
+{
+  "name": "runner-builder",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "npm -w @runner-builder/server run dev",
+    "dev:web": "npm -w @runner-builder/web run dev",
+    "setup": "npm -w @runner-builder/server run setup",
+    "build": "npm -w @runner-builder/web run build"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

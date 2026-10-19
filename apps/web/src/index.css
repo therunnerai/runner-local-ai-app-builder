@@ -1,0 +1,247 @@
+@import "tailwindcss";
+
+/*
+  Runner Builder — design tokens.
+
+  Palette is Apple's system colours, used as published: the semantic label and
+  background hierarchy (label / secondaryLabel / separator / systemBackground /
+  tertiarySystemBackground) plus the system accent set. Both appearances are
+  first-class, and each colour is the platform's own light/dark pair rather than
+  one value reused in both.
+*/
+
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI",
+    sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-raised: var(--c-raised);
+  --color-ink: var(--c-ink);
+  --color-muted: var(--c-muted);
+  --color-faint: var(--c-faint);
+  --color-hairline: var(--c-hairline);
+  --color-accent: var(--c-accent);
+  --color-accent-ink: var(--c-accent-ink);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-ok: var(--c-ok);
+  --color-danger: var(--c-danger);
+
+  /* Apple's system accents, available for non-semantic use. */
+  --color-blue: var(--c-blue);
+  --color-green: var(--c-green);
+  --color-indigo: var(--c-indigo);
+  --color-orange: var(--c-orange);
+  --color-pink: var(--c-pink);
+  --color-purple: var(--c-purple);
+  --color-red: var(--c-red);
+  --color-teal: var(--c-teal);
+  --color-yellow: var(--c-yellow);
+
+  --radius-card: 0.875rem;
+  --radius-panel: 1.125rem;
+  --radius-pill: 999px;
+
+  --shadow-lift: 0 1px 2px rgb(0 0 0 / 0.05), 0 6px 16px -8px rgb(0 0 0 / 0.14);
+  --shadow-float: 0 2px 6px rgb(0 0 0 / 0.06), 0 24px 48px -20px rgb(0 0 0 / 0.26);
+}
+
+:root {
+  /* Light — systemBackground / tertiarySystemBackground / label hierarchy */
+  --c-canvas: #f2f2f7;
+  --c-surface: #ffffff;
+  --c-raised: #ffffff;
+  --c-ink: #000000;
+  --c-muted: rgb(60 60 67 / 0.6);
+  --c-faint: rgb(60 60 67 / 0.3);
+  --c-hairline: rgb(60 60 67 / 0.29);
+
+  --c-accent: #007aff;
+  --c-accent-ink: #ffffff;
+  --c-accent-soft: rgb(0 122 255 / 0.12);
+  --c-ok: #34c759;
+  --c-danger: #ff3b30;
+
+  --c-blue: #007aff;
+  --c-green: #34c759;
+  --c-indigo: #5856d6;
+  --c-orange: #ff9500;
+  --c-pink: #ff2d55;
+  --c-purple: #af52de;
+  --c-red: #ff3b30;
+  --c-teal: #5ac8fa;
+  --c-yellow: #ffcc00;
+
+  /* Material weights: structural chrome is heavier, interactive chips lighter. */
+  --material-chrome: rgb(255 255 255 / 0.72);
+  --material-panel: rgb(255 255 255 / 0.68);
+  --material-chip: rgb(255 255 255 / 0.55);
+  --material-edge: rgb(255 255 255 / 0.9);
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Dark — the same hierarchy, from Apple's dark set. Accents brighten because
+       the published light values lose contrast against a black background. */
+    --c-canvas: #000000;
+    --c-surface: #1c1c1e;
+    --c-raised: #2c2c2e;
+    --c-ink: #ffffff;
+    --c-muted: rgb(235 235 245 / 0.6);
+    --c-faint: rgb(235 235 245 / 0.3);
+    --c-hairline: rgb(84 84 88 / 0.65);
+
+    --c-accent: #0a84ff;
+    --c-accent-ink: #ffffff;
+    --c-accent-soft: rgb(10 132 255 / 0.18);
+    --c-ok: #30d158;
+    --c-danger: #ff453a;
+
+    --c-blue: #0a84ff;
+    --c-green: #30d158;
+    --c-indigo: #5e5ce6;
+    --c-orange: #ff9f0a;
+    --c-pink: #ff375f;
+    --c-purple: #bf5af2;
+    --c-red: #ff453a;
+    --c-teal: #64d2ff;
+    --c-yellow: #ffd60a;
+
+    --material-chrome: rgb(28 28 30 / 0.72);
+    --material-panel: rgb(44 44 46 / 0.62);
+    --material-chip: rgb(255 255 255 / 0.06);
+    --material-edge: rgb(255 255 255 / 0.09);
+  }
+}
+
+* {
+  min-width: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--c-canvas);
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
+}
+
+::selection {
+  background: var(--c-accent-soft);
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/*
+  Tailwind v4's preflight leaves `button` with the browser default cursor, which
+  on macOS is an arrow — so every control in this app showed a non-interactive
+  cursor and read as inert even when it was live. Restore the affordance for
+  anything actually clickable, and leave disabled controls looking disabled.
+*/
+button:not(:disabled),
+[role="button"]:not(:disabled),
+label[for],
+summary,
+select:not(:disabled) {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* Translucent chrome: content scrolls underneath rather than sitting beside a bar. */
+.material-chrome {
+  background: var(--material-chrome);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+.material-panel {
+  background: var(--material-panel);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+.material-chip {
+  background: var(--material-chip);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+/* A bright edge reads as light catching the material. */
+.edge-light {
+  box-shadow: inset 0 1px 0 var(--material-edge);
+}
+
+/* Typography: tracking is size-specific, never one value everywhere. */
+.display {
+  letter-spacing: -0.022em;
+  line-height: 1.08;
+}
+
+.title {
+  letter-spacing: -0.014em;
+  line-height: 1.2;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--c-ink) 20%, transparent) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--c-ink) 16%, transparent);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--c-ink) 28%, transparent);
+  background-clip: content-box;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--c-ink) 5%, transparent) 25%,
+    color-mix(in oklab, var(--c-ink) 10%, transparent) 37%,
+    color-mix(in oklab, var(--c-ink) 5%, transparent) 63%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}

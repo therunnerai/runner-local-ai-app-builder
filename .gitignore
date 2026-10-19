@@ -1,0 +1,11 @@
+node_modules
+dist
+.DS_Store
+*.log
+.builder
+templates/scaffold/dist
+templates/scaffold/node_modules
+templates/scaffold-expo/dist
+templates/scaffold-expo/node_modules
+templates/scaffold-expo/.expo
+templates/scaffold-expo/package-lock.json

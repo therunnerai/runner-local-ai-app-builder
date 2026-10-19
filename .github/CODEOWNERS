@@ -1,0 +1,4 @@
+# Every pull request needs a maintainer's approval before it can merge.
+# Pair this file with a branch ruleset on `main` that requires review from
+# code owners, so the rule is enforced by GitHub rather than by habit.
+* @bravram

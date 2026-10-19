@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: runner-builder-postgres
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_DB: runner_builder
+      POSTGRES_USER: runner_builder
+      POSTGRES_PASSWORD: runner_builder
+    volumes:
+      - runner-builder-postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  runner-builder-postgres:
