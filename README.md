@@ -3,9 +3,11 @@
 Runner's app builder: describe an app in a chat, an agent writes it to disk, and you
 watch it come to life in a live preview next to the conversation.
 
-The code generator is **your own Codex subscription** via the `codex` CLI — there is no
-third-party builder account, no cloud, and no data leaving the machine except the model
-calls your Codex login already makes.
+The code generator is **a CLI you already have**: the Codex CLI on your ChatGPT
+subscription, Claude Code on your Anthropic subscription, Gemini CLI on your Google
+account, or a local model through Ollama. There is no third-party builder account, no
+cloud, and no data leaving the machine except the model calls your own login already
+makes.
 
 Open source under the [GNU AGPL-3.0](LICENSE); commercial licenses are available from
 Runner AI. **Powered by [Runner AI](https://therunner.ai).**
@@ -19,7 +21,8 @@ Runner AI. **Powered by [Runner AI](https://therunner.ai).**
 | **Existing repository** | A real codebase cloned from GitHub at a base branch | The repository's own dev server | Every turn is a commit on a feature branch; the builder opens the pull request |
 
 The same chat, agent, history and revert work for all three. The agent runs on **your own
-subscription** through the Codex CLI, or on a **local model** (see below).
+subscription** through the Codex CLI, Claude Code or Gemini CLI, chosen per workspace, or
+on a **local model** (see [Agents](#agents) and [Local models](#local-models)).
 
 ## A free, open-source alternative to the hosted builders
 
@@ -30,7 +33,7 @@ Vibecode** for, without the parts that make them expensive or closed:
 |---|---|---|
 | Price | Credits or a monthly plan per builder | Free. Your existing ChatGPT subscription, or a local model at no cost |
 | Where your code lives | Their cloud, exported on request | Your disk, a git repository from the first turn |
-| Model | Theirs, fixed | Codex models today, local models through any OpenAI-compatible server |
+| Model | Theirs, fixed | Codex, Claude Code or Gemini CLI per workspace; local models through Ollama, LM Studio or any Responses-API server |
 | Mobile | Some; web wrappers or paid tiers | Native Expo apps, phone preview, App Store and Google Play through EAS |
 | Existing codebases | Rarely | Open any GitHub repository, work on a branch, get a pull request |
 | Lock-in | Account, credits, hosting | None. Stop the process and the project is still a normal project on disk |
@@ -59,8 +62,9 @@ The trade: you run it yourself, on your machine, with your own accounts. That is
 | **GitHub** — pick a repository from your account, mirror work, open PRs | ✅ |
 | **Read-only team memory** — the agent can search MemPalace, never write | ✅ |
 | Light + dark, reduced-motion aware | ✅ |
-
 | **Mobile apps** — an Expo (React Native) project kind: phone preview via Expo Go, web preview in the frame, EAS cloud builds and store submission from a Release panel | ✅ |
+| **Agent per workspace** — Codex, Claude Code or Gemini CLI from the sidebar; **effort per project** from the composer | ✅ |
+| CI on every pull request: both type-checks and the UI build | ✅ |
 
 Not built (deliberately): billing, cloud deploys, custom domains, database hosting,
 connectors.
@@ -78,7 +82,11 @@ start of every turn, so a long project does not degrade into the last eight mess
 The preview runs the project's own Expo dev server. The frame shows the web build; **Open
 on your phone** shows the QR code Expo Go scans over LAN (`exp://<lan address>:<port>`).
 Expo Go only opens projects from the same Expo account as the dev server, so sign in
-once with `npx expo login` and in Expo Go, and the panel names the account it sees.
+once with `npx expo login` and in Expo Go, and the panel names the account it sees. It
+also names the **Expo SDK** the app runs on: Expo Go runs exactly one SDK, the one the App
+Store and Play Store currently ship, so the template pins that version and is bumped only
+after the stores move. "This project requires a newer version of Expo Go" means the phone
+is behind; "too old" means the template is.
 
 After every mobile turn the project is type-checked (`tsc --noEmit`). If it fails, the
 agent gets one fix turn with the compiler's output, inside the same turn and commit, so a
@@ -88,9 +96,15 @@ red screen is caught before anyone sees it. `BUILDER_SELF_CHECK=0` turns this of
 package in `app.json` (a version of its own), links the project to EAS on the first
 build, and queues `eas build` in Expo's cloud for the chosen platforms and profile:
 `preview` for installable test builds, `production` for store-ready ones, optionally with
-`--auto-submit` to TestFlight and the Play internal track. Nothing is compiled on this
-machine; signing credentials live in your Expo account (`npx eas-cli credentials` once
-per app). Store listings, screenshots and App Review stay yours.
+`--auto-submit` to TestFlight and the Play internal track. Before the upload the builder
+untracks a committed `node_modules` link and resolves the project's lockfile against its
+`package.json`, because the build machine installs with `npm ci` and refuses a lockfile
+that has drifted. Nothing is compiled on this
+machine. An Android build creates its signing key in EAS on the first run, unattended;
+an iOS build needs your Apple Developer sign-in once (`npx eas-cli credentials` in the
+project), and an iOS submission needs the **App Store Connect app id** of the app record
+you created there, which the Release dialog records in `eas.json`. Store listings,
+screenshots and App Review stay yours.
 
 The agent's skills for mobile come from the official Expo plugin for Codex
 (`codex plugin add expo@openai-curated`): `building-native-ui`, `native-data-fetching`,
@@ -103,7 +117,9 @@ TestFlight crashes); sign it in once with
 
 `npm run setup` installs both templates' dependencies. Every mobile project symlinks the
 Expo template's `node_modules`; its `metro.config.js` watches the real directory so Metro
-resolves through the link.
+resolves through the link, and the agent's sandbox reads through it too, so `npx tsc`,
+`npx expo lint` and `npx expo install` work inside a turn. The link is checked before
+every turn and restored if something removed it.
 
 ---
 
@@ -117,11 +133,11 @@ templates/scaffold   what every new project starts from
 ```
 
 ```
-builder UI ──REST + SSE──▶ orchestrator ──▶ per-project Vite dev server ──▶ preview iframe
+builder UI ──REST + SSE──▶ orchestrator ──▶ per-project Vite or Expo dev server ──▶ preview iframe
                                 │
-                                ├─▶ `codex exec --json`  (the agent)
+                                ├─▶ apps/server/src/agents: codex exec · claude -p · gemini -p  (the agent)
                                 ├─▶ git commit per turn  (history / revert)
-                                └─▶ SQLite (users · sessions · workspaces · projects · messages · edits)
+                                └─▶ SQLite (users · sessions · workspaces · projects · messages · edits · releases)
 ```
 
 **One agent turn = one `edits` row = one git commit.** That is what makes
@@ -236,15 +252,16 @@ hidden project from a missing one.
 ## How a turn runs
 
 1. The UI POSTs the prompt; the server answers with an SSE stream.
-2. The server writes the user message, boots the project's dev server if needed, and spawns:
+2. The server writes the user message, boots the project's dev server if needed, checks
+   the project's `node_modules` link, and spawns the workspace's agent. With Codex:
    ```
    codex exec --json -C <project> -s workspace-write -m gpt-6-astra \
-              -c model_reasoning_effort="ultra" --skip-git-repo-check
+              -c model_reasoning_effort="high" --skip-git-repo-check
    ```
    with a system preamble describing the scaffold's conventions.
-3. Each `--json` line is parsed into `agent.delta` / `agent.tool` / `files.changed`
+3. Each JSON line is parsed into `agent.delta` / `agent.tool` / `files.changed`
    and streamed to the UI. The raw stream is kept at
-   `<project>/.builder/agent.log.jsonl` for debugging the parser.
+   `<project>/.builder/agent*.log.jsonl` for debugging the parser.
 4. On exit: `git add -A && git commit`, one `edits` row, `turn.completed`.
 
 Turns on a project run **one at a time**. A prompt sent while a turn is running is
@@ -254,27 +271,64 @@ how many turns are ahead (`turn.queued`). Pressing **Stop** closes the stream, w
 terminates the codex process; anything it had already written is committed as its
 own `Stopped: …` version so it stays revertable, and queued prompts are discarded.
 
-Override per run with `BUILDER_MODEL`, `BUILDER_REASONING` and `BUILDER_SANDBOX`.
-Defaults are `gpt-6-astra`, `ultra`, `workspace-write`. `gpt-6-astra` supports
-`low | medium | high | xhigh | max | ultra`.
+### Effort
+
+How hard the agent thinks is a per-project choice in the composer (the gauge chip next
+to **Select element**), from the levels the workspace's agent accepts. Unset, a project
+gets the builder's default for its kind: `BUILDER_REASONING` (default `xhigh`) for web
+and repository turns and `BUILDER_MOBILE_REASONING` (default `high`) for mobile turns,
+which read several skills and the app brief every time and get expensive fast at the top
+levels. `gpt-6-astra` supports `low | medium | high | xhigh | max | ultra`; Claude Code
+`low | medium | high | xhigh | max`; Gemini CLI has no levels. `BUILDER_SANDBOX` and
+`BUILDER_MODEL` still override the Codex sandbox and model.
+
+## Agents
+
+The agent is a CLI the builder drives, and a workspace chooses which one from the
+sidebar's **Agent** row (owners only; the change applies to every project in the
+workspace from its next turn). `BUILDER_AGENT` sets the default for workspaces that have
+not chosen. All three are the person's own installed, signed-in CLI; the builder holds no
+model key.
+
+| Agent | Command | Isolation | Permissions |
+|---|---|---|---|
+| **Codex** (default) | `codex exec --json` from the builder's own Codex home | Codex's OS sandbox, `workspace-write` | Edits the project; network only for repository projects |
+| **Claude Code** | `claude -p --output-format stream-json --safe-mode` | `--safe-mode`: your hooks, plugins, MCP servers and `CLAUDE.md` stay out of the agent's way, your login still works | Edits are approved; commands come from an allow-list (the type-check, Expo's install/lint/export, the project's lint, build, typecheck and test scripts, reading the tree, read-only git) and a command outside it is denied. The list is a permission filter, not an OS sandbox: an allowed script runs whatever the project defines for it. Extend with `BUILDER_CLAUDE_ALLOWED_TOOLS` |
+| **Gemini CLI** | `gemini -p --output-format stream-json --approval-mode yolo` | None | Approves every tool call; there is no allow-list to hand it. Written from the documentation and not yet exercised against a signed-in CLI |
+
+Skills reach Codex through its home; Claude Code and Gemini CLI are pointed at the same
+folder (`--add-dir`, `--include-directories`) and told where the skills live, so every
+agent sees the same design and framework guides. Read-only MemPalace memory is wired
+through Codex's MCP configuration only. Codex runs with its built-in ChatGPT connector
+server switched off (`--disable apps`): an unattended agent has no use for it, and its
+tool definitions would ride along on every call.
 
 ### Local models
 
-The agent can run on any OpenAI-compatible server on your machine instead of the
-subscription: Ollama, LM Studio, vLLM, llama.cpp. Name the provider and the model and the
-builder declares the server in the agent's Codex home and selects it for every turn:
+Codex can run a local model instead of the subscription. `ollama` and `lmstudio` are
+Codex's own built-in providers (`codex exec --oss`), so a local model is two settings:
 
 ```bash
 ollama pull gpt-oss:20b
-BUILDER_PROVIDER=ollama BUILDER_MODEL=gpt-oss:20b BUILDER_REASONING=medium npm run dev
+BUILDER_PROVIDER=ollama BUILDER_MODEL=gpt-oss:20b npm run dev
 ```
 
-`BUILDER_PROVIDER_URL` (default `http://localhost:11434/v1`), `BUILDER_PROVIDER_API`
-(`chat` or `responses`) and `BUILDER_PROVIDER_KEY_ENV` (the name of an env variable holding
-a key, for servers that want one) cover the other servers. Everything else is unchanged:
-the sandbox, one commit per turn, the preview. Expect a local model to be slower and less
-capable than the hosted frontier models on full app builds; it shines for edits and for
-working offline. The ChatGPT login is not needed in this mode.
+With a provider set, the default effort is `none`: no reasoning level is sent, which a
+model without a thinking mode needs (one that has it takes `BUILDER_REASONING=medium`).
+Give the server room for a turn: a builder prompt carries a few thousand tokens of
+instructions, the app brief and the tool definitions before the model writes a line, and
+Ollama's default context window is 4096 tokens, which ends a turn with "something went
+wrong". Run Ollama with `OLLAMA_CONTEXT_LENGTH=32768` (or set the context length in the
+Ollama app's settings) and pick a model that supports tool calls.
+`BUILDER_PROVIDER_URL` names the server root when it is not Ollama's
+`http://localhost:11434`. Any other provider name is a self-hosted OpenAI-compatible
+server (vLLM, llama.cpp, a gateway) declared in the agent's Codex home from the required
+`BUILDER_PROVIDER_URL` (ending in `/v1`); Codex speaks only the Responses API to it, which
+Ollama and current vLLM serve. `BUILDER_PROVIDER_KEY_ENV` names an env variable holding a
+key for servers that want one. Everything else is unchanged: the sandbox, one commit per
+turn, the preview. Expect a local model to be slower and less capable than the hosted
+frontier models on full app builds; it shines for edits and for working offline. The
+ChatGPT login is not needed in this mode.
 
 ---
 
@@ -310,15 +364,17 @@ the connection can be disabled with `BUILDER_MEMPALACE=0`.
 ```
 GET    /api/health
 GET    /api/auth/me                 POST /api/auth/login · logout · bootstrap · users
-GET    /api/workspaces              POST /api/workspaces
+GET    /api/agents
+GET    /api/workspaces              POST /api/workspaces      PATCH /api/workspaces/:id (agent)
 GET    /api/workspaces/:id/members  POST · PATCH · DELETE members
 GET    /api/github/repos            GET  /api/github/accounts
 POST   /api/github/accounts/switch
 GET    /api/projects                POST /api/projects
 GET    /api/projects/:id            DELETE /api/projects/:id
 GET    /api/projects/:id/files      GET  /api/projects/:id/file?path=
-POST   /api/projects/:id/preview
+POST   /api/projects/:id/preview    PATCH /api/projects/:id/settings (reasoning)
 POST   /api/projects/:id/turn       → SSE event stream
+GET/POST /api/projects/:id/release[/identity|/submission]   GET /api/projects/:id/releases
 POST   /api/projects/:id/revert
 POST   /api/projects/:id/publish
 GET/POST/DELETE /api/projects/:id/github[/connect|/sync|/pr|/settings]
@@ -343,8 +399,9 @@ font (`system-ui`) is used deliberately — it ships SF Pro's optical sizing on 
 
 ## Known limitations
 
-- The parser is written against `codex-cli 0.162`'s event schema; unknown events are
-  logged rather than failing the turn.
+- The parsers are written against `codex-cli 0.163`'s and Claude Code 2.1's event
+  schemas, and Gemini CLI's from its documentation; unknown events are logged rather than
+  failing the turn.
 - **Running `vite build` creates `apps/web/dist`, and the orchestrator serves that
   directory when it exists** — so a restart after a build serves a frozen UI on :4310.
   Delete it if the orchestrator should stay API-only.
@@ -357,17 +414,14 @@ font (`system-ui`) is used deliberately — it ships SF Pro's optical sizing on 
   from `~/.runner-builder/builder.db`.
 - Attachments in the composer are not wired up yet.
 - Publish produces a build; it does not yet serve the built output on a stable URL.
-- There is no test suite, so none of the above is verified in CI.
+- CI type-checks and builds; there is no test suite yet, so behaviour is verified by hand.
 
 ---
 
 ## Roadmap
 
-- **Any subscription, or a local model.** The agent is a CLI the builder drives; the
-  Codex CLI is the first. Next: pass a provider through `codex exec` (its
-  OpenAI-compatible `model_provider`, which is how Ollama and other local models plug in),
-  then an adapter for Claude Code (`claude -p --output-format stream-json`) and other
-  subscription CLIs, chosen per workspace from the sidebar.
+- **Expo tools sign-in from the UI**: the Expo MCP login (`codex mcp login expo`) still
+  needs a terminal and a browser; the ChatGPT row's one-time-code flow is the model.
 - **Device preview on iOS simulators and Android emulators** where the machine has them.
 - **Store listing help**: screenshots, description and privacy answers drafted by the agent
   for App Store Connect and the Play Console.

@@ -12,8 +12,13 @@ AGPL-3.0, with commercial licenses available from the maintainer.
   be agreed before you spend time on it.
 - Every change arrives as a pull request against `main`. Pull requests are
   welcome from anyone; they are merged only after a maintainer's approval
-  (see `.github/CODEOWNERS`). Maintainers may ask for changes, or decline a
-  change that does not fit the product.
+  (see `.github/CODEOWNERS`) and a green CI run (`.github/workflows/ci.yml`:
+  both type-checks and the UI build). Maintainers may ask for changes, or
+  decline a change that does not fit the product.
+- While there is a single maintainer, their own pull requests cannot be
+  approved by a second code owner, so they merge with the repository's
+  maintainer bypass once CI is green. The moment a second maintainer joins,
+  that bypass stops being used and every pull request waits for a review.
 - Every contributor accepts the [Contributor License Agreement](CLA.md) once,
   by saying so in their first pull request (the template has the line). It lets
   the maintainer license the project under the AGPL and under commercial terms,

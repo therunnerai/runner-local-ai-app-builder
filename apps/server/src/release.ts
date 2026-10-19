@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { EAS_TIMEOUT_MS } from "./config.ts";
 import { easBin } from "./expo.ts";
+import { git } from "./git.ts";
 
 const pexec = promisify(execFile);
 
@@ -37,6 +38,8 @@ export type AppIdentity = {
   /** The EAS project this app is linked to; null until `eas init` ran. */
   projectId: string | null;
   owner: string | null;
+  /** The App Store Connect app id an iOS submission needs; null until recorded in eas.json. */
+  ascAppId: string | null;
 };
 
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9_]*)+$/;
@@ -55,9 +58,26 @@ async function appJson(dir: string): Promise<{ file: string; config: any }> {
   return { file, config };
 }
 
+async function easJson(dir: string): Promise<{ file: string; config: any }> {
+  const file = path.join(dir, "eas.json");
+  let config: any = {};
+  try {
+    config = JSON.parse(await readFile(file, "utf8"));
+  } catch (err) {
+    // Only a missing file starts empty; a file that exists but does not
+    // parse is never silently replaced.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new Error(`eas.json could not be read: ${(err as Error).message}`);
+    }
+  }
+  return { file, config: typeof config === "object" && config ? config : {} };
+}
+
 export async function readIdentity(dir: string): Promise<AppIdentity> {
   const { config } = await appJson(dir);
+  const { config: eas } = await easJson(dir);
   const e = config.expo;
+  const ascAppId = eas.submit?.production?.ios?.ascAppId;
   return {
     name: String(e.name ?? ""),
     slug: String(e.slug ?? ""),
@@ -65,7 +85,26 @@ export async function readIdentity(dir: string): Promise<AppIdentity> {
     packageName: e.android?.package ?? null,
     projectId: e.extra?.eas?.projectId ?? null,
     owner: e.owner ?? null,
+    ascAppId: ascAppId ? String(ascAppId) : null,
   };
+}
+
+/**
+ * Record the App Store Connect app id in eas.json, under the production
+ * submit profile `eas submit` reads. Apple assigns it when the app record is
+ * created in App Store Connect; without it an unattended iOS submission has
+ * nothing to submit to and the CLI would stop to ask.
+ */
+export async function setSubmission(dir: string, submission: { ascAppId: string }): Promise<AppIdentity> {
+  if (!/^\d{6,14}$/.test(submission.ascAppId)) {
+    throw new Error("the App Store Connect app id is the number in the app's App Store Connect URL (digits only)");
+  }
+  const { file, config } = await easJson(dir);
+  config.submit = { ...(config.submit ?? {}) };
+  config.submit.production = { ...(config.submit.production ?? {}) };
+  config.submit.production.ios = { ...(config.submit.production.ios ?? {}), ascAppId: submission.ascAppId };
+  await writeFile(file, `${JSON.stringify(config, null, 2)}\n`);
+  return readIdentity(dir);
 }
 
 /**
@@ -88,10 +127,15 @@ export async function setIdentity(
   return readIdentity(dir);
 }
 
-async function eas(dir: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+/**
+ * Run the project's EAS CLI. Commands that could prompt get `--non-interactive`
+ * so they fail with a message instead of waiting on a question nobody sees;
+ * `build:view` does not take the flag and is read-only anyway.
+ */
+async function eas(dir: string, args: string[], nonInteractive = true): Promise<{ stdout: string; stderr: string }> {
   const bin = easBin(dir);
   if (!bin) throw new Error("EAS CLI is not installed in this project");
-  return pexec(bin, [...args, "--non-interactive"], {
+  return pexec(bin, nonInteractive ? [...args, "--non-interactive"] : args, {
     cwd: dir,
     timeout: EAS_TIMEOUT_MS,
     maxBuffer: 32 * 1024 * 1024,
@@ -108,9 +152,11 @@ function parseJson(stdout: string): unknown {
   return JSON.parse(stdout.slice(start));
 }
 
+/** `eas build --json` and `eas build:view --json` name the app under `app`; older output used `project`. */
 function toBuild(raw: any): EasBuild {
-  const account = raw?.project?.ownerAccount?.name ?? raw?.ownerAccount?.name ?? null;
-  const slug = raw?.project?.slug ?? null;
+  const app = raw?.app ?? raw?.project ?? null;
+  const account = app?.ownerAccount?.name ?? raw?.ownerAccount?.name ?? null;
+  const slug = app?.slug ?? null;
   const id = String(raw?.id ?? "");
   return {
     id,
@@ -128,6 +174,52 @@ function easError(err: unknown): Error {
   const text = `${e.stderr ?? ""}\n${e.stdout ?? ""}`.trim();
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   return new Error(lines.slice(-4).join(" ").slice(0, 600) || e.message || "EAS failed");
+}
+
+/**
+ * EAS builds from a clone of the project's commits. A project scaffolded
+ * before the template's ignore rule matched a link as well as a directory
+ * committed its node_modules link, which arrives on the build machine as a
+ * dangling link into this Mac and breaks the install phase. Untrack it and
+ * fix the rule; the caller commits. Returns whether anything changed.
+ */
+export async function untrackSharedModules(dir: string): Promise<boolean> {
+  const tracked = await git(dir, ["ls-files", "--", "node_modules"]).catch(() => "");
+  if (!tracked) return false;
+  await git(dir, ["rm", "-r", "-q", "--cached", "--", "node_modules"]);
+  const file = path.join(dir, ".gitignore");
+  let ignore = "";
+  try {
+    ignore = await readFile(file, "utf8");
+  } catch {
+    /* no ignore file: one is written below */
+  }
+  if (!ignore.split("\n").some((line) => line.trim() === "node_modules")) {
+    const fixed = ignore.replace(/^node_modules\/[ \t]*$/m, "node_modules");
+    ignore = /^node_modules[ \t]*$/m.test(fixed) ? fixed : `node_modules\n${fixed}`;
+    await writeFile(file, ignore.endsWith("\n") ? ignore : `${ignore}\n`);
+  }
+  return true;
+}
+
+/**
+ * EAS installs with `npm ci`, which refuses a lockfile that disagrees with
+ * package.json, and a project's lockfile drifts: the template's lock is copied
+ * at creation while `npx expo install` and SDK pins move package.json. Resolve
+ * the lock on this machine, without touching the shared node_modules, so the
+ * upload is consistent. Returns whether the lockfile changed; the caller commits.
+ */
+export async function syncLockfile(dir: string): Promise<boolean> {
+  const lock = path.join(dir, "package-lock.json");
+  const current = () => readFile(lock, "utf8").catch(() => "");
+  const before = await current();
+  await pexec("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"], {
+    cwd: dir,
+    timeout: EAS_TIMEOUT_MS,
+    maxBuffer: 32 * 1024 * 1024,
+    env: { ...process.env, CI: "1", NO_COLOR: "1" },
+  });
+  return (await current()) !== before;
 }
 
 /**
@@ -165,7 +257,7 @@ export async function startBuilds(dir: string, req: ReleaseRequest): Promise<Eas
 
 export async function buildStatus(dir: string, buildId: string): Promise<EasBuild> {
   try {
-    const { stdout } = await eas(dir, ["build:view", buildId, "--json"]);
+    const { stdout } = await eas(dir, ["build:view", buildId, "--json"], false);
     return toBuild(parseJson(stdout));
   } catch (err) {
     throw easError(err);

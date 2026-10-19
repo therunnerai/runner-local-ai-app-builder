@@ -89,6 +89,15 @@ export function DevicePanel({ device }: { device: PreviewInfo["device"] }) {
                   Play Store, sign in, then scan this with the phone's camera. Phone and Mac must be
                   on the same Wi-Fi.
                 </p>
+                {device?.sdk && (
+                  <p className="mt-2 text-[12px] leading-relaxed text-faint">
+                    This app runs on <span className="font-medium text-ink">Expo SDK {device.sdk}</span>, so Expo Go
+                    on the phone must be version {device.sdk}. If Expo Go says the project needs a newer version,
+                    update Expo Go; if it says the project is too old, the store has moved on. On iPhone only the App
+                    Store version of Expo Go runs; on Android, Expo also offers older Expo Go builds for a matching
+                    SDK. A development build from the Release panel works on either without Expo Go.
+                  </p>
+                )}
                 <p className="mt-2 truncate font-mono text-[11.5px] text-faint" title={url}>
                   {url}
                 </p>

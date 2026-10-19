@@ -1,0 +1,40 @@
+# The two type-checks and the UI build CONTRIBUTING.md asks for, run on every
+# pull request and on main. Templates are not installed here: the builder's own
+# code is what a contribution changes, and the Expo template's install is the
+# size of a small operating system.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the run still queued for the old one,
+# so a busy runner queue never spends minutes on a commit nobody will merge.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Type-check and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Type-check the orchestrator
+        run: npx tsc -p apps/server --noEmit
+      - name: Type-check the UI
+        run: npx tsc -p apps/web --noEmit
+      - name: Build the UI
+        run: npm -w @runner-builder/web run build

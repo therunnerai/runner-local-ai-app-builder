@@ -30,6 +30,38 @@ export type Project = {
    * once connected.
    */
   mirrorBranch: string | null;
+  /**
+   * The effort (reasoning) level this project's turns run at, one of the
+   * agent's `efforts`; null means the builder's default for this kind of app.
+   */
+  reasoning: string | null;
+};
+
+/* ----------------------------------------------------------------- agents */
+
+/** The coding-agent CLIs the builder can drive. Each is the person's own, signed in on this machine. */
+export type AgentProvider = "codex" | "claude" | "gemini";
+
+export type AgentStatus = {
+  id: AgentProvider;
+  label: string;
+  installed: boolean;
+  /** The account the CLI is signed in as, when it can be read without a prompt. */
+  account: string | null;
+  /** The model the builder asks for; null means the CLI's own default. */
+  model: string | null;
+  /** Effort levels this CLI accepts, lowest first; empty when it has none. */
+  efforts: string[];
+  /** The level a project of each kind gets when it has not chosen one. */
+  defaultEfforts: Record<Project["kind"], string | null>;
+  /** What a person should know before choosing this one. */
+  note: string | null;
+};
+
+/** What /api/agents answers: every CLI's state, and the one a workspace gets unless it chooses. */
+export type AgentsInfo = {
+  default: AgentProvider;
+  agents: AgentStatus[];
 };
 
 export type GithubState = {
@@ -93,6 +125,8 @@ export type PreviewInfo = {
     url: string | null;
     /** The Expo account the dev server runs as; Expo Go must be signed in to the same one. */
     account: string | null;
+    /** The Expo SDK major the project runs; Expo Go on the phone must be the same version. */
+    sdk: number | null;
   } | null;
 };
 
@@ -129,6 +163,8 @@ export type ReleaseConfig = {
   projectId: string | null;
   /** The Expo account the CLI is signed in as; null means `npx expo login` is still needed. */
   account: string | null;
+  /** The App Store Connect app id, needed before an iOS build can be submitted unattended. */
+  ascAppId: string | null;
 };
 
 export type FileNode = {
@@ -167,6 +203,8 @@ export type Workspace = {
   createdAt: number;
   /** The calling user's role in this workspace. */
   role: WorkspaceRole | null;
+  /** The coding agent this workspace's turns run on; null means the builder's default. */
+  agent: AgentProvider | null;
 };
 
 export type WorkspaceMember = {

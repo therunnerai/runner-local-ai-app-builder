@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type {
+  AgentsInfo,
   FileNode,
   GithubState,
   Message,
@@ -20,13 +21,16 @@ import { ReleaseDialog } from "../components/ReleaseDialog";
 import { Spinner, useToast } from "../components/ui";
 import {
   ensurePreview,
+  getAgents,
   getFiles,
   getGithub,
   getProject,
   publishProject,
   revertTo,
+  setProjectSettings,
   streamTurn,
 } from "../lib/api";
+import { useSession } from "../lib/session";
 
 const MIN_CHAT = 320;
 const MAX_CHAT = 760;
@@ -37,8 +41,10 @@ export default function Builder() {
   const location = useLocation();
   const toast = useToast();
   const reduce = useReducedMotion();
+  const { workspaces } = useSession();
 
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
+  const [agentsInfo, setAgentsInfo] = useState<AgentsInfo | null>(null);
   const [tree, setTree] = useState<FileNode[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("preview");
@@ -93,6 +99,32 @@ export default function Builder() {
       .then(setGithub)
       .catch(() => setGithub(null));
   }, [id]);
+
+  // Which CLI this project's workspace runs on decides the effort levels the
+  // composer can offer.
+  useEffect(() => {
+    getAgents()
+      .then(setAgentsInfo)
+      .catch(() => setAgentsInfo(null));
+  }, []);
+
+  const agentId =
+    workspaces.find((w) => w.id === detail?.project.workspaceId)?.agent ?? agentsInfo?.default ?? "codex";
+  const agentStatus = agentsInfo?.agents.find((a) => a.id === agentId) ?? null;
+
+  const setEffort = useCallback(
+    async (value: string | null) => {
+      if (!id) return;
+      try {
+        const project = await setProjectSettings(id, { reasoning: value });
+        setDetail((d) => (d ? { ...d, project } : d));
+        toast(value ? `Effort set to ${value}` : "Effort back to the default");
+      } catch (e) {
+        toast((e as Error).message, "error");
+      }
+    },
+    [id, toast],
+  );
 
   // Boot the project's dev server once.
   useEffect(() => {
@@ -359,6 +391,16 @@ export default function Builder() {
               busy={busy}
               queueWhileBusy
               placeholder="Ask for a change…"
+              effort={
+                agentStatus && agentStatus.efforts.length > 0
+                  ? {
+                      value: detail.project.reasoning,
+                      options: agentStatus.efforts,
+                      fallback: agentStatus.defaultEfforts[detail.project.kind],
+                      onChange: (value) => void setEffort(value),
+                    }
+                  : undefined
+              }
               pickMode={pickMode}
               // Element picking rides on the web scaffold's overlay script; a
               // native app's web build has no such hook.

@@ -1,7 +1,123 @@
-import { useEffect, useRef, type KeyboardEvent } from "react";
-import { motion, useReducedMotion } from "framer-motion";
-import { ArrowUp, Paperclip, Square, Wand2 } from "lucide-react";
-import { SPRING, cx, Spinner } from "./ui";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ArrowUp, Check, Gauge, Paperclip, Square, Wand2 } from "lucide-react";
+import { SOFT_SPRING, SPRING, cx, Spinner } from "./ui";
+
+/** How hard the agent thinks on this project: the levels its CLI accepts, and the default when none is chosen. */
+export type EffortChoice = {
+  value: string | null;
+  options: string[];
+  /** The level used when `value` is null; null when the CLI has no default to name. */
+  fallback: string | null;
+  onChange: (value: string | null) => void;
+};
+
+const EFFORT_LABELS: Record<string, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+  ultra: "Ultra",
+};
+
+const effortLabel = (level: string) => EFFORT_LABELS[level] ?? level;
+
+/**
+ * A chip that names the current effort and opens the list to change it. The
+ * trade is spelled out once: higher levels think longer and cost more per
+ * turn; the default is what the builder found right for this kind of app.
+ */
+function EffortMenu({ effort, disabled }: { effort: EffortChoice; disabled?: boolean }) {
+  const reduce = useReducedMotion();
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const current = effort.value ?? effort.fallback;
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const pick = (value: string | null) => {
+    setOpen(false);
+    if (value !== effort.value) effort.onChange(value);
+  };
+
+  return (
+    <div ref={wrap} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title="How hard the agent thinks on this project"
+        className={cx(
+          "inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-[12.5px] transition-colors",
+          open
+            ? "bg-[color-mix(in_oklab,var(--c-ink)_8%,transparent)] text-ink"
+            : "text-muted hover:bg-[color-mix(in_oklab,var(--c-ink)_8%,transparent)] hover:text-ink",
+          "disabled:opacity-40",
+        )}
+      >
+        <Gauge size={14} />
+        {current ? effortLabel(current) : "Effort"}
+        {effort.value === null && current ? <span className="text-faint">· default</span> : null}
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="menu"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 4, scale: 0.98 }}
+            transition={SOFT_SPRING}
+            className="material-panel edge-light absolute bottom-[calc(100%+6px)] left-0 z-30 w-[232px] rounded-card border border-hairline p-1 shadow-float"
+          >
+            <p className="px-2 pt-1.5 pb-1 text-[11px] leading-snug text-faint">
+              Higher levels think longer and cost more per change.
+            </p>
+            <button
+              type="button"
+              role="menuitemradio"
+              aria-checked={effort.value === null}
+              onClick={() => pick(null)}
+              className="flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left text-[12.5px] hover:bg-[color-mix(in_oklab,var(--c-ink)_6%,transparent)]"
+            >
+              <Check size={13} className={cx("shrink-0", effort.value === null ? "text-accent" : "text-transparent")} />
+              <span className="min-w-0 flex-1 truncate">
+                Default{effort.fallback ? ` · ${effortLabel(effort.fallback)}` : ""}
+              </span>
+            </button>
+            {effort.options.map((level) => (
+              <button
+                key={level}
+                type="button"
+                role="menuitemradio"
+                aria-checked={effort.value === level}
+                onClick={() => pick(level)}
+                className="flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left text-[12.5px] hover:bg-[color-mix(in_oklab,var(--c-ink)_6%,transparent)]"
+              >
+                <Check size={13} className={cx("shrink-0", effort.value === level ? "text-accent" : "text-transparent")} />
+                <span className="min-w-0 flex-1 truncate">{effortLabel(level)}</span>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 /**
  * The composer. Feedback is continuous and immediate (Apple: feedback on
@@ -21,6 +137,7 @@ export function Composer({
   autoFocus,
   pickMode,
   onTogglePick,
+  effort,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -34,6 +151,8 @@ export function Composer({
   autoFocus?: boolean;
   pickMode?: boolean;
   onTogglePick?: () => void;
+  /** The project's effort level, when its agent has levels to choose from. */
+  effort?: EffortChoice;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const reduce = useReducedMotion();
@@ -143,6 +262,8 @@ export function Composer({
             {pickMode ? "Pick an element…" : "Select element"}
           </button>
         )}
+
+        {effort && <EffortMenu effort={effort} />}
 
         <span className="flex-1" />
 

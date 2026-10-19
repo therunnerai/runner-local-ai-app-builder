@@ -135,26 +135,57 @@ export const PREVIEW_ENV: Record<string, string> = Object.fromEntries(
 export const CODEX_MODEL = process.env.BUILDER_MODEL ?? "gpt-6-astra";
 
 /**
- * Where the model runs. Empty means the Codex login's own provider (the
- * person's ChatGPT subscription). Any other value names an OpenAI-compatible
- * server declared in the agent's Codex home, so a local model is one setting:
- * BUILDER_PROVIDER=ollama BUILDER_MODEL=gpt-oss:20b. The URL and wire protocol
- * default to Ollama's; LM Studio, vLLM and llama.cpp servers fit the same shape.
+ * Where the Codex agent's model runs. Empty means the Codex login's own
+ * provider (the person's ChatGPT subscription). `ollama` and `lmstudio` are
+ * Codex's built-in local providers, selected with `codex exec --oss`, so a
+ * local model is one setting: BUILDER_PROVIDER=ollama BUILDER_MODEL=gpt-oss:20b.
+ * Any other value names a self-hosted OpenAI-compatible server (vLLM,
+ * llama.cpp, a gateway) declared in the agent's Codex home, which Codex talks
+ * to over the Responses API only.
  */
 export const MODEL_PROVIDER = (process.env.BUILDER_PROVIDER ?? "").trim();
-export const MODEL_PROVIDER_URL = process.env.BUILDER_PROVIDER_URL ?? "http://localhost:11434/v1";
-export const MODEL_PROVIDER_API = process.env.BUILDER_PROVIDER_API === "responses" ? "responses" : "chat";
+export const BUILTIN_LOCAL_PROVIDERS = new Set(["ollama", "lmstudio"]);
+/**
+ * The server's address. For a built-in provider it is the server root, handed
+ * to Codex as CODEX_OSS_BASE_URL (unset keeps Codex's default, Ollama's
+ * http://localhost:11434); for a custom provider it is the API base, …/v1.
+ */
+export const MODEL_PROVIDER_URL = (process.env.BUILDER_PROVIDER_URL ?? "").trim();
 /** Name of an env variable holding the provider's API key, for servers that want one. */
 export const MODEL_PROVIDER_KEY_ENV = (process.env.BUILDER_PROVIDER_KEY_ENV ?? "").trim();
+if (MODEL_PROVIDER && !BUILTIN_LOCAL_PROVIDERS.has(MODEL_PROVIDER) && !MODEL_PROVIDER_URL) {
+  throw new Error(
+    `BUILDER_PROVIDER=${MODEL_PROVIDER} needs BUILDER_PROVIDER_URL, the server's OpenAI-compatible base URL ending in /v1`,
+  );
+}
+
 /**
- * Reasoning level for the agent. `gpt-6-astra` supports low | medium | high |
- * xhigh | max | ultra (its own default is medium). Passed to codex as
- * `model_reasoning_effort`, so it overrides the CLI config the same way the
- * model does rather than being silently taken from ~/.codex/config.toml.
+ * Effort (reasoning) levels. A project can choose its own from the composer;
+ * these are the defaults a project without a choice gets. A mobile turn reads
+ * several skills and the app brief every time, so the highest levels get
+ * expensive fast; `high` keeps the result while cutting the bill. "none"
+ * passes no level at all, which a local model without a thinking mode needs.
  */
-export const CODEX_REASONING = process.env.BUILDER_REASONING ?? "ultra";
+export const EFFORT_NONE = "none";
+const REASONING = process.env.BUILDER_REASONING;
+export const DEFAULT_EFFORT = REASONING ?? (MODEL_PROVIDER ? EFFORT_NONE : "xhigh");
+export const MOBILE_EFFORT = process.env.BUILDER_MOBILE_REASONING ?? (MODEL_PROVIDER ? DEFAULT_EFFORT : REASONING ?? "high");
 /** Sandbox mode for codex exec. workspace-write lets it edit the project. */
 export const CODEX_SANDBOX = process.env.BUILDER_SANDBOX ?? "workspace-write";
+
+/**
+ * Which CLI drives the agent when a workspace has not chosen one: codex (the
+ * default), claude (Claude Code) or gemini (Gemini CLI). Each is the person's
+ * own installed, signed-in CLI; the builder never holds a model API key.
+ */
+export const DEFAULT_AGENT = (process.env.BUILDER_AGENT ?? "codex").trim();
+export const CLAUDE_MODEL = (process.env.BUILDER_CLAUDE_MODEL ?? "").trim();
+export const GEMINI_MODEL = (process.env.BUILDER_GEMINI_MODEL ?? "").trim();
+/** Extra Claude Code tool permissions, comma-separated, in Claude's own `Bash(npm run:*)` syntax. */
+export const CLAUDE_EXTRA_TOOLS = (process.env.BUILDER_CLAUDE_ALLOWED_TOOLS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 /** Web dev-server origin, so the CSRF origin check accepts the Vite proxy. */
 const WEB_PORT = Number(process.env.BUILDER_WEB_PORT ?? 4311);

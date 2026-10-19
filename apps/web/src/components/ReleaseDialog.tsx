@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ExternalLink, RefreshCw, Rocket, Smartphone, X } from "lucide-react";
 import type { Release, ReleaseConfig } from "@runner-builder/shared";
-import { getReleaseConfig, listReleases, setReleaseIdentity, startRelease } from "../lib/api";
+import { getReleaseConfig, listReleases, setReleaseIdentity, setReleaseSubmission, startRelease } from "../lib/api";
 import { Button, IconButton, SOFT_SPRING, Spinner, cx, useToast } from "./ui";
 import { relativeTime } from "../lib/format";
 
@@ -61,6 +61,7 @@ export function ReleaseDialog({
   const [releases, setReleases] = useState<Release[] | null>(null);
   const [bundleId, setBundleId] = useState("");
   const [packageName, setPackageName] = useState("");
+  const [ascAppId, setAscAppId] = useState("");
   const [platform, setPlatform] = useState<Platform>("all");
   const [profile, setProfile] = useState<Profile>("preview");
   const [submit, setSubmit] = useState(false);
@@ -73,6 +74,7 @@ export function ReleaseDialog({
       setReleases(r);
       setBundleId((v) => v || c.bundleId || suggestId(projectName));
       setPackageName((v) => v || c.packageName || c.bundleId || suggestId(projectName));
+      setAscAppId((v) => v || c.ascAppId || "");
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -98,6 +100,10 @@ export function ReleaseDialog({
   }, [onClose, busy]);
 
   const identitySet = Boolean(config?.bundleId && config?.packageName);
+  // Apple's submission needs the app record's id; Google's needs only the
+  // service account kept in EAS. So the checkbox is gated on iOS alone.
+  const submitsToApple = submit && profile === "production" && platform !== "android";
+  const needsAscAppId = submitsToApple && !config?.ascAppId;
 
   async function guard(label: string, fn: () => Promise<void>) {
     setBusy(label);
@@ -260,17 +266,61 @@ export function ReleaseDialog({
                   </span>
                 </label>
                 <p className="mt-2 text-[12px] leading-relaxed text-faint">
-                  The first build of a new app also creates its signing credentials in EAS. If EAS asks
-                  for them, run <code className="font-mono">npx eas-cli credentials</code> in the project
-                  once, then build again from here.
+                  An Android build creates its signing key in EAS on the first run. An iOS build needs
+                  your Apple Developer sign-in once: run{" "}
+                  <code className="font-mono">npx eas-cli credentials</code> in the project, then build
+                  again from here.
                 </p>
+                {profile === "production" && platform !== "android" && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    <Field label="App Store Connect app id">
+                      <div className="flex gap-2">
+                        <input
+                          value={ascAppId}
+                          onChange={(e) => setAscAppId(e.target.value.replace(/\D/g, ""))}
+                          inputMode="numeric"
+                          placeholder="1234567890"
+                          spellCheck={false}
+                          disabled={Boolean(busy)}
+                          className="h-9 min-w-0 flex-1 rounded-xl border border-hairline bg-transparent px-3 font-mono text-[13px] outline-none focus-visible:border-accent"
+                        />
+                        <Button
+                          variant="glass"
+                          size="md"
+                          disabled={Boolean(busy) || !/^\d{6,14}$/.test(ascAppId) || ascAppId === (config.ascAppId ?? "")}
+                          onClick={() =>
+                            guard("asc", async () => {
+                              setConfig(await setReleaseSubmission(projectId, { ascAppId }));
+                              toast("App Store Connect app id saved");
+                            })
+                          }
+                        >
+                          {busy === "asc" ? <Spinner /> : null}
+                          Save
+                        </Button>
+                      </div>
+                    </Field>
+                    <p className="text-[12px] leading-relaxed text-faint">
+                      The number in the app's App Store Connect URL, after <code className="font-mono">/apps/</code>.
+                      Create the app record there first; TestFlight submission needs it.
+                      {config.ascAppId ? (
+                        <>
+                          {" "}
+                          Saved: <span className="font-mono text-ink">{config.ascAppId}</span>.
+                        </>
+                      ) : null}
+                    </p>
+                  </div>
+                )}
                 <div className="mt-3 flex justify-end">
                   <Button
                     variant="primary"
-                    disabled={Boolean(busy) || !identitySet || !config.account}
+                    disabled={Boolean(busy) || !identitySet || !config.account || needsAscAppId}
                     onClick={() =>
                       guard("build", async () => {
-                        setReleases(await startRelease(projectId, { platform, profile, submit: submit && profile === "production" }));
+                        setReleases(
+                          await startRelease(projectId, { platform, profile, submit: submit && profile === "production" }),
+                        );
                         toast("Builds queued on EAS");
                         setConfig(await getReleaseConfig(projectId));
                       })

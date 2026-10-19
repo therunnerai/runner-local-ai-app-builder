@@ -1,0 +1,10 @@
+# CodeRabbit is switched off for this repository: no automatic reviews, no
+# summaries, no chat replies. Review happens between people on the pull request.
+reviews:
+  auto_review:
+    enabled: false
+  high_level_summary: false
+  poem: false
+  review_status: false
+chat:
+  auto_reply: false

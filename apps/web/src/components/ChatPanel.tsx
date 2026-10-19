@@ -39,6 +39,7 @@ function humanize(name: string, detail: string): { label: string; raw?: string; 
       // file that isn't there is normal exploration). Alarm belongs to a turn
       // that actually fails, which arrives as its own system message.
       return { label: "Took a different route", raw: detail, tone: "text-faint" };
+    case "agent":
     case "github":
     case "preview":
     case "queue":

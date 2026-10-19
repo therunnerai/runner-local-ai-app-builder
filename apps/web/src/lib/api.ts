@@ -1,4 +1,6 @@
 import type {
+  AgentProvider,
+  AgentsInfo,
   AuthState,
   FileNode,
   GithubState,
@@ -95,6 +97,19 @@ export const removeMember = (workspaceId: string, userId: string) =>
     ok<{ ok: boolean }>,
   );
 
+/* ----------------------------------------------------------------- agents */
+
+/** The coding-agent CLIs on this machine and the builder's default. */
+export const getAgents = () => req("/agents").then(ok<AgentsInfo>);
+
+/** Which agent a workspace's turns run on; null returns to the default. Owners only. */
+export const setWorkspaceAgent = (workspaceId: string, agent: AgentProvider | null) =>
+  req(`/workspaces/${workspaceId}`, { ...json({ agent }), method: "PATCH" }).then(ok<Workspace>);
+
+/** Per-project choices; `reasoning: null` returns to the default effort for the project's kind. */
+export const setProjectSettings = (id: string, settings: { reasoning?: string | null }) =>
+  req(`/projects/${id}/settings`, { ...json(settings), method: "PATCH" }).then(ok<Project>);
+
 /* --------------------------------------------------------------- projects */
 
 export const listProjects = (workspaceId?: string) =>
@@ -163,6 +178,10 @@ export const getReleaseConfig = (id: string) => req(`/projects/${id}/release`).t
 
 export const setReleaseIdentity = (id: string, body: { bundleId: string; packageName: string }) =>
   req(`/projects/${id}/release/identity`, json(body)).then(ok<ReleaseConfig>);
+
+/** The App Store Connect app id an unattended iOS submission needs. */
+export const setReleaseSubmission = (id: string, body: { ascAppId: string }) =>
+  req(`/projects/${id}/release/submission`, json(body)).then(ok<ReleaseConfig>);
 
 /** Queue EAS cloud builds; returns the project's releases including the new ones. */
 export const startRelease = (
