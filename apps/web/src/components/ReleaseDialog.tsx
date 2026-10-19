@@ -287,7 +287,7 @@ export function ReleaseDialog({
                         <Button
                           variant="glass"
                           size="md"
-                          disabled={Boolean(busy) || !ascAppId || ascAppId === (config.ascAppId ?? "")}
+                          disabled={Boolean(busy) || !/^\d{6,14}$/.test(ascAppId) || ascAppId === (config.ascAppId ?? "")}
                           onClick={() =>
                             guard("asc", async () => {
                               setConfig(await setReleaseSubmission(projectId, { ascAppId }));

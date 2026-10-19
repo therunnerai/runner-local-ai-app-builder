@@ -1,4 +1,4 @@
-import { cp, lstat, symlink } from "node:fs/promises";
+import { cp, lstat, stat, symlink, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { EXPO_SCAFFOLD_DIR, SCAFFOLD_DIR } from "./config.ts";
@@ -42,7 +42,13 @@ export async function ensureSharedModules(dir: string, kind: ScaffoldKind): Prom
   const dest = path.join(dir, "node_modules");
   try {
     await lstat(dest);
-    return "present";
+    try {
+      await stat(dest);
+      return "present";
+    } catch {
+      // A link whose target is gone: remove it and relink below.
+      await unlink(dest);
+    }
   } catch {
     /* not there: fall through and relink */
   }

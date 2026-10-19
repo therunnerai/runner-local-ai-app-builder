@@ -987,7 +987,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         // thinks. Team memory is wired through Codex's MCP config only.
         const workspace = project.workspaceId ? await getWorkspace(project.workspaceId) : null;
         const agent = agents.resolve(workspace?.agent);
-        const effort = project.reasoning ?? agent.defaultEffort(project.kind);
+        // A level chosen under another agent, or an older build, must not
+        // reach a CLI that would refuse it.
+        const chosen = project.reasoning && agent.efforts.includes(project.reasoning) ? project.reasoning : null;
+        const effort = chosen ?? agent.defaultEffort(project.kind);
         const memory = MEMPALACE_ENABLED && agent.id === "codex";
         send({ type: "agent.tool", name: "agent", detail: effort ? `${agent.label} · ${effort}` : agent.label });
 

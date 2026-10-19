@@ -80,8 +80,13 @@ export class JsonlProcess {
       let summary = "";
       let failed: string | undefined;
 
-      child.stdout.on("data", (chunk: Buffer) => {
-        buffer += chunk.toString();
+      // Decode as streams, not per chunk: a multi-byte character split across
+      // two chunks would otherwise arrive as two broken ones.
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+
+      child.stdout.on("data", (chunk: string) => {
+        buffer += chunk;
         let idx: number;
         while ((idx = buffer.indexOf("\n")) >= 0) {
           const line = buffer.slice(0, idx).trim();
@@ -96,8 +101,8 @@ export class JsonlProcess {
       });
 
       let stderr = "";
-      child.stderr.on("data", (b: Buffer) => {
-        stderr += b.toString();
+      child.stderr.on("data", (chunk: string) => {
+        stderr += chunk;
       });
 
       // Stop = terminate the process, not just stop listening to it. An agent

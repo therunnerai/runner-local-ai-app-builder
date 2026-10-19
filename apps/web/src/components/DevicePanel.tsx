@@ -92,9 +92,10 @@ export function DevicePanel({ device }: { device: PreviewInfo["device"] }) {
                 {device?.sdk && (
                   <p className="mt-2 text-[12px] leading-relaxed text-faint">
                     This app runs on <span className="font-medium text-ink">Expo SDK {device.sdk}</span>, so Expo Go
-                    on the phone must be version {device.sdk}. The stores ship one version at a time: if Expo Go says
-                    the project needs a newer version, update Expo Go; if it says the project is too old, the
-                    store has moved on and the app's Expo version needs a bump.
+                    on the phone must be version {device.sdk}. If Expo Go says the project needs a newer version,
+                    update Expo Go; if it says the project is too old, the store has moved on. On iPhone only the App
+                    Store version of Expo Go runs; on Android, Expo also offers older Expo Go builds for a matching
+                    SDK. A development build from the Release panel works on either without Expo Go.
                   </p>
                 )}
                 <p className="mt-2 truncate font-mono text-[11.5px] text-faint" title={url}>

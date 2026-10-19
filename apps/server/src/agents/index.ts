@@ -9,6 +9,9 @@ export type { AgentAdapter, AgentProvider, AgentStatus, ProjectKind, RunOptions,
 
 export const AGENT_PROVIDERS: AgentProvider[] = ["codex", "claude", "gemini"];
 
+/** How long one round of CLI status answers is reused before the CLIs are asked again. */
+const STATUS_TTL_MS = 30_000;
+
 export function isAgentProvider(value: unknown): value is AgentProvider {
   return typeof value === "string" && (AGENT_PROVIDERS as string[]).includes(value);
 }
@@ -41,8 +44,27 @@ export class AgentRegistry {
     return CODEX_ISOLATED ? path.join(BUILDER_CODEX_HOME, "skills") : null;
   }
 
-  async statuses(): Promise<AgentStatus[]> {
-    return Promise.all(AGENT_PROVIDERS.map((id) => this.adapters[id].status()));
+  private statusCache: { at: number; value: Promise<AgentStatus[]> } | null = null;
+
+  /**
+   * Every CLI is asked for its version and login. The sidebar, the agent
+   * dialog and each open project ask at once, so one round of answers is
+   * shared for a short while; a failed round is not kept.
+   */
+  statuses(): Promise<AgentStatus[]> {
+    const now = Date.now();
+    if (this.statusCache && now - this.statusCache.at < STATUS_TTL_MS) return this.statusCache.value;
+    const value = Promise.all(AGENT_PROVIDERS.map((id) => this.adapters[id].status()));
+    this.statusCache = { at: now, value };
+    value.catch(() => {
+      this.statusCache = null;
+    });
+    return value;
+  }
+
+  /** Forget the cached answers, e.g. after a login changed. */
+  forgetStatuses(): void {
+    this.statusCache = null;
   }
 }
 

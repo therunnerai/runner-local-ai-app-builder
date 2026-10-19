@@ -63,8 +63,12 @@ async function easJson(dir: string): Promise<{ file: string; config: any }> {
   let config: any = {};
   try {
     config = JSON.parse(await readFile(file, "utf8"));
-  } catch {
-    /* a project without eas.json gets one when a submission id is recorded */
+  } catch (err) {
+    // Only a missing file starts empty; a file that exists but does not
+    // parse is never silently replaced.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new Error(`eas.json could not be read: ${(err as Error).message}`);
+    }
   }
   return { file, config: typeof config === "object" && config ? config : {} };
 }
@@ -206,15 +210,16 @@ export async function untrackSharedModules(dir: string): Promise<boolean> {
  * upload is consistent. Returns whether the lockfile changed; the caller commits.
  */
 export async function syncLockfile(dir: string): Promise<boolean> {
-  const before = await git(dir, ["status", "--porcelain", "--", "package-lock.json"]).catch(() => "");
+  const lock = path.join(dir, "package-lock.json");
+  const current = () => readFile(lock, "utf8").catch(() => "");
+  const before = await current();
   await pexec("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"], {
     cwd: dir,
     timeout: EAS_TIMEOUT_MS,
     maxBuffer: 32 * 1024 * 1024,
     env: { ...process.env, CI: "1", NO_COLOR: "1" },
   });
-  const after = await git(dir, ["status", "--porcelain", "--", "package-lock.json"]).catch(() => "");
-  return after !== before || Boolean(after);
+  return (await current()) !== before;
 }
 
 /**

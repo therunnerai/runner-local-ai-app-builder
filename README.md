@@ -293,7 +293,7 @@ model key.
 | Agent | Command | Isolation | Permissions |
 |---|---|---|---|
 | **Codex** (default) | `codex exec --json` from the builder's own Codex home | Codex's OS sandbox, `workspace-write` | Edits the project; network only for repository projects |
-| **Claude Code** | `claude -p --output-format stream-json --safe-mode` | `--safe-mode`: your hooks, plugins, MCP servers and `CLAUDE.md` stay out of the agent's way, your login still works | Edits are approved; commands only from a fixed list (type-check, Expo and npm scripts, reading the tree, read-only git); anything else is denied. Add to the list with `BUILDER_CLAUDE_ALLOWED_TOOLS` |
+| **Claude Code** | `claude -p --output-format stream-json --safe-mode` | `--safe-mode`: your hooks, plugins, MCP servers and `CLAUDE.md` stay out of the agent's way, your login still works | Edits are approved; commands come from an allow-list (the type-check, Expo's install/lint/export, the project's lint, build, typecheck and test scripts, reading the tree, read-only git) and a command outside it is denied. The list is a permission filter, not an OS sandbox: an allowed script runs whatever the project defines for it. Extend with `BUILDER_CLAUDE_ALLOWED_TOOLS` |
 | **Gemini CLI** | `gemini -p --output-format stream-json --approval-mode yolo` | None | Approves every tool call; there is no allow-list to hand it. Written from the documentation and not yet exercised against a signed-in CLI |
 
 Skills reach Codex through its home; Claude Code and Gemini CLI are pointed at the same
