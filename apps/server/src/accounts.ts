@@ -83,6 +83,12 @@ export async function getWorkspace(id: string): Promise<WorkspaceRow | null> {
   return (await store.get<WorkspaceRow>("SELECT * FROM workspaces WHERE id = ?", [id])) ?? null;
 }
 
+/** The coding agent the workspace's turns run on; null returns to the builder's default. */
+export async function setWorkspaceAgent(id: string, agent: string | null): Promise<void> {
+  const store = await getStore();
+  await store.run("UPDATE workspaces SET agent = ? WHERE id = ?", [agent, id]);
+}
+
 export async function addMember(workspaceId: string, userId: string, role: Role): Promise<void> {
   const store = await getStore();
   await store.run(

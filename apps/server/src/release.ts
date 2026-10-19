@@ -37,6 +37,8 @@ export type AppIdentity = {
   /** The EAS project this app is linked to; null until `eas init` ran. */
   projectId: string | null;
   owner: string | null;
+  /** The App Store Connect app id an iOS submission needs; null until recorded in eas.json. */
+  ascAppId: string | null;
 };
 
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z][A-Za-z0-9_]*)+$/;
@@ -55,9 +57,22 @@ async function appJson(dir: string): Promise<{ file: string; config: any }> {
   return { file, config };
 }
 
+async function easJson(dir: string): Promise<{ file: string; config: any }> {
+  const file = path.join(dir, "eas.json");
+  let config: any = {};
+  try {
+    config = JSON.parse(await readFile(file, "utf8"));
+  } catch {
+    /* a project without eas.json gets one when a submission id is recorded */
+  }
+  return { file, config: typeof config === "object" && config ? config : {} };
+}
+
 export async function readIdentity(dir: string): Promise<AppIdentity> {
   const { config } = await appJson(dir);
+  const { config: eas } = await easJson(dir);
   const e = config.expo;
+  const ascAppId = eas.submit?.production?.ios?.ascAppId;
   return {
     name: String(e.name ?? ""),
     slug: String(e.slug ?? ""),
@@ -65,7 +80,26 @@ export async function readIdentity(dir: string): Promise<AppIdentity> {
     packageName: e.android?.package ?? null,
     projectId: e.extra?.eas?.projectId ?? null,
     owner: e.owner ?? null,
+    ascAppId: ascAppId ? String(ascAppId) : null,
   };
+}
+
+/**
+ * Record the App Store Connect app id in eas.json, under the production
+ * submit profile `eas submit` reads. Apple assigns it when the app record is
+ * created in App Store Connect; without it an unattended iOS submission has
+ * nothing to submit to and the CLI would stop to ask.
+ */
+export async function setSubmission(dir: string, submission: { ascAppId: string }): Promise<AppIdentity> {
+  if (!/^\d{6,14}$/.test(submission.ascAppId)) {
+    throw new Error("the App Store Connect app id is the number in the app's App Store Connect URL (digits only)");
+  }
+  const { file, config } = await easJson(dir);
+  config.submit = { ...(config.submit ?? {}) };
+  config.submit.production = { ...(config.submit.production ?? {}) };
+  config.submit.production.ios = { ...(config.submit.production.ios ?? {}), ascAppId: submission.ascAppId };
+  await writeFile(file, `${JSON.stringify(config, null, 2)}\n`);
+  return readIdentity(dir);
 }
 
 /**
@@ -88,10 +122,15 @@ export async function setIdentity(
   return readIdentity(dir);
 }
 
-async function eas(dir: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+/**
+ * Run the project's EAS CLI. Commands that could prompt get `--non-interactive`
+ * so they fail with a message instead of waiting on a question nobody sees;
+ * `build:view` does not take the flag and is read-only anyway.
+ */
+async function eas(dir: string, args: string[], nonInteractive = true): Promise<{ stdout: string; stderr: string }> {
   const bin = easBin(dir);
   if (!bin) throw new Error("EAS CLI is not installed in this project");
-  return pexec(bin, [...args, "--non-interactive"], {
+  return pexec(bin, nonInteractive ? [...args, "--non-interactive"] : args, {
     cwd: dir,
     timeout: EAS_TIMEOUT_MS,
     maxBuffer: 32 * 1024 * 1024,
@@ -108,9 +147,11 @@ function parseJson(stdout: string): unknown {
   return JSON.parse(stdout.slice(start));
 }
 
+/** `eas build --json` and `eas build:view --json` name the app under `app`; older output used `project`. */
 function toBuild(raw: any): EasBuild {
-  const account = raw?.project?.ownerAccount?.name ?? raw?.ownerAccount?.name ?? null;
-  const slug = raw?.project?.slug ?? null;
+  const app = raw?.app ?? raw?.project ?? null;
+  const account = app?.ownerAccount?.name ?? raw?.ownerAccount?.name ?? null;
+  const slug = app?.slug ?? null;
   const id = String(raw?.id ?? "");
   return {
     id,
@@ -165,7 +206,7 @@ export async function startBuilds(dir: string, req: ReleaseRequest): Promise<Eas
 
 export async function buildStatus(dir: string, buildId: string): Promise<EasBuild> {
   try {
-    const { stdout } = await eas(dir, ["build:view", buildId, "--json"]);
+    const { stdout } = await eas(dir, ["build:view", buildId, "--json"], false);
     return toBuild(parseJson(stdout));
   } catch (err) {
     throw easError(err);

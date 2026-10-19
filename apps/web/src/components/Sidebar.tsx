@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Check, ChevronDown, FolderOpen, Github, KeyRound, LogOut, Plus, Smartphone, Users } from "lucide-react";
-import type { Project } from "@runner-builder/shared";
+import { Bot, Check, ChevronDown, FolderOpen, Github, KeyRound, LogOut, Plus, Smartphone, Users } from "lucide-react";
+import type { AgentsInfo, Project } from "@runner-builder/shared";
 import { Button, SPRING, cx } from "./ui";
 import { MembersDialog } from "./MembersDialog";
 import { GithubConnectDialog } from "./GithubConnectDialog";
 import { CodexDialog } from "./CodexDialog";
-import { getCodex, listGithubAccounts, type CodexAccount } from "../lib/api";
+import { AgentDialog } from "./AgentDialog";
+import { getAgents, getCodex, listGithubAccounts, type CodexAccount } from "../lib/api";
 import { relativeTime } from "../lib/format";
 import { useSession } from "../lib/session";
 
@@ -210,6 +211,45 @@ function GithubRow({ onChanged }: { onChanged: () => void }) {
   );
 }
 
+/** The coding agent this workspace runs on, with the dialog to change it. */
+function AgentRow() {
+  const { workspace } = useSession();
+  const [info, setInfo] = useState<AgentsInfo | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    getAgents().then(setInfo).catch(() => setInfo(null));
+  }, []);
+
+  const id = workspace?.agent ?? info?.default ?? null;
+  const status = info?.agents.find((a) => a.id === id) ?? null;
+  const label = status ? status.label : "—";
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-2 rounded-[10px] border border-hairline px-2.5 py-2 text-left transition-colors hover:bg-[color-mix(in_oklab,var(--c-ink)_6%,transparent)]"
+      >
+        <Bot size={14} className="shrink-0 text-faint" />
+        <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">Agent</span>
+        <span
+          className={cx(
+            "shrink-0 max-w-[120px] truncate text-[11px]",
+            status && !status.installed ? "text-danger" : "text-faint",
+          )}
+        >
+          {label}
+          {workspace?.agent ? "" : status ? " · default" : ""}
+        </span>
+      </button>
+
+      <AgentDialog open={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+
 /** The ChatGPT account the agent runs as, with the dialog to change it. */
 function CodexRow() {
   const [account, setAccount] = useState<CodexAccount | null>(null);
@@ -291,6 +331,7 @@ export function Sidebar({
 
       <div className="flex flex-col gap-1.5 px-3 pb-2">
         <GithubRow onChanged={() => onProjectsChanged?.()} />
+        <AgentRow />
         <CodexRow />
       </div>
 

@@ -1,4 +1,4 @@
-import { cp, symlink } from "node:fs/promises";
+import { cp, lstat, symlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { EXPO_SCAFFOLD_DIR, SCAFFOLD_DIR } from "./config.ts";
@@ -29,4 +29,25 @@ export async function seedScaffold(dir: string, kind: ScaffoldKind = "scaffold")
   if (existsSync(sharedModules)) {
     await symlink(sharedModules, path.join(dir, "node_modules"), "dir").catch(() => {});
   }
+}
+
+/**
+ * Make sure a template project still has its node_modules link before the
+ * agent starts. Without it the project cannot type-check, lint or even start,
+ * and the agent's first command of a turn has found it missing before.
+ * Restoring the link is instant; a template that was never installed is
+ * reported so the person can run the builder's setup.
+ */
+export async function ensureSharedModules(dir: string, kind: ScaffoldKind): Promise<"present" | "linked" | "missing"> {
+  const dest = path.join(dir, "node_modules");
+  try {
+    await lstat(dest);
+    return "present";
+  } catch {
+    /* not there: fall through and relink */
+  }
+  const shared = path.join(scaffoldDirFor(kind), "node_modules");
+  if (!existsSync(shared)) return "missing";
+  await symlink(shared, dest, "dir");
+  return "linked";
 }

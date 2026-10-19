@@ -20,6 +20,7 @@ export type ProjectRow = {
   created_by?: string | null;
   kind?: string | null;
   mirror_branch?: string | null;
+  reasoning?: string | null;
 };
 
 export type MessageRow = {
@@ -74,6 +75,8 @@ export type WorkspaceRow = {
   name: string;
   created_by: string;
   created_at: number;
+  /** The coding-agent CLI this workspace's turns run on; null means the builder's default. */
+  agent?: string | null;
 };
 
 export type MembershipRow = {
@@ -278,6 +281,8 @@ async function open(): Promise<Store> {
     `ALTER TABLE projects ${add} created_by TEXT`,
     `ALTER TABLE projects ${add} kind TEXT NOT NULL DEFAULT 'scaffold'`,
     `ALTER TABLE projects ${add} mirror_branch TEXT`,
+    `ALTER TABLE projects ${add} reasoning TEXT`,
+    `ALTER TABLE workspaces ${add} agent TEXT`,
   ]) {
     try {
       await s.exec(stmt);
@@ -331,6 +336,7 @@ export function toProject(r: ProjectRow) {
     createdBy: r.created_by ?? null,
     kind: r.kind === "repo" ? ("repo" as const) : r.kind === "mobile" ? ("mobile" as const) : ("scaffold" as const),
     mirrorBranch: r.mirror_branch ?? null,
+    reasoning: r.reasoning ?? null,
   };
 }
 
@@ -378,12 +384,14 @@ export function toUser(r: UserRow) {
 }
 
 export function toWorkspace(r: WorkspaceRow, role?: MembershipRow["role"]) {
+  const agent = r.agent;
   return {
     id: r.id,
     name: r.name,
     createdBy: r.created_by,
     createdAt: r.created_at,
     role: role ?? null,
+    agent: agent === "codex" || agent === "claude" || agent === "gemini" ? agent : null,
   };
 }
 

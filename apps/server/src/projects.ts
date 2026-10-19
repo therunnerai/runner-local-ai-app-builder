@@ -168,6 +168,12 @@ export async function setPushOnPublish(id: string, value: boolean) {
   await store.run("UPDATE projects SET push_on_publish = ? WHERE id = ?", [value ? 1 : 0, id]);
 }
 
+/** The effort level the project's turns run at; null returns to the default for its kind. */
+export async function setReasoning(id: string, value: string | null) {
+  const store = await getStore();
+  await store.run("UPDATE projects SET reasoning = ? WHERE id = ?", [value, id]);
+}
+
 export async function listMessages(projectId: string) {
   const store = await getStore();
   const rows = await store.all<any>("SELECT * FROM messages WHERE project_id = ? ORDER BY created_at ASC", [projectId]);

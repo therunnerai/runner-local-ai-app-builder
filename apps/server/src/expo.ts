@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -41,6 +41,22 @@ export function expoBin(dir: string): string | null {
 export function easBin(dir: string): string | null {
   const bin = path.join(dir, "node_modules", ".bin", "eas");
   return existsSync(bin) ? bin : null;
+}
+
+/**
+ * The Expo SDK major the project's installed `expo` package belongs to. Expo
+ * Go runs exactly one SDK, so the phone can only open the project when its
+ * Expo Go is this version; the UI names the number so a mismatch is
+ * explained rather than guessed at.
+ */
+export function expoSdkMajor(dir: string): number | null {
+  try {
+    const pkg = JSON.parse(readFileSync(path.join(dir, "node_modules", "expo", "package.json"), "utf8"));
+    const major = Number(String(pkg.version ?? "").split(".")[0]);
+    return Number.isFinite(major) && major > 0 ? major : null;
+  } catch {
+    return null;
+  }
 }
 
 type Cached = { at: number; value: string | null };

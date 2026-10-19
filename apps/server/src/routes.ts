@@ -14,21 +14,25 @@ import {
   listMessages,
   listProjectsForUser,
   listReleases,
+  getProject,
   readProjectFile,
   setPort,
   setPushOnPublish,
+  setReasoning,
   setRepo,
   updateRelease,
 } from "./projects.ts";
 import { selfCheck } from "./checks.ts";
 import { readBrief } from "./brief.ts";
-import { expoAccount } from "./expo.ts";
+import { expoAccount, expoSdkMajor } from "./expo.ts";
+import { ensureSharedModules } from "./scaffold.ts";
 import {
   TERMINAL_STATUSES,
   buildStatus,
   ensureEasProject,
   readIdentity,
   setIdentity,
+  setSubmission,
   startBuilds,
   type ReleasePlatform,
   type ReleaseProfile,
@@ -43,6 +47,7 @@ import {
   createWorkspace,
   ensurePersonalWorkspace,
   findUserByEmail,
+  getWorkspace,
   hasWorkspaceRole,
   isRole,
   listMembers,
@@ -50,6 +55,7 @@ import {
   removeMember,
   requireProjectAccess,
   setMemberRole,
+  setWorkspaceAgent,
   type Role,
 } from "./accounts.ts";
 import {
@@ -65,7 +71,8 @@ import {
 } from "./auth.ts";
 import { ensureDevServer, previewUrlFor } from "./devservers.ts";
 import { cancelLogin, codexStatus, linkTerminalLogin, logout as codexLogout, startLogin } from "./codexAuth.ts";
-import { buildPrompt, runCodex } from "./agent.ts";
+import { buildPrompt } from "./agent.ts";
+import { agents, isAgentProvider, type RunResult } from "./agents/index.ts";
 import { buildProject } from "./publish.ts";
 import { commitAll, git, revertTo } from "./git.ts";
 import { runExclusive } from "./turns.ts";
@@ -270,6 +277,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     return { user: toUser(await createUser(email, name, password)) };
   });
 
+  /* ---------------------------------------------------------------- agents */
+
+  /** The coding-agent CLIs on this machine, and the one a workspace gets unless it chooses. */
+  app.get("/api/agents", async () => ({ default: agents.defaultProvider, agents: await agents.statuses() }));
+
   /* ------------------------------------------------------------ workspaces */
 
   app.get("/api/workspaces", async (req) => listWorkspacesForUser(currentUser(req)!.id));
@@ -281,6 +293,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     await addMember(workspace.id, user.id, "owner");
     reply.code(201);
     return toWorkspace(workspace, "owner");
+  });
+
+  /** Which coding agent the workspace's turns run on. Owners choose; null returns to the builder's default. */
+  app.patch("/api/workspaces/:wid", async (req, reply) => {
+    const user = currentUser(req)!;
+    const { wid } = req.params as { wid: string };
+    if (!(await hasWorkspaceRole(user.id, wid, "owner"))) {
+      return reply.code(404).send({ error: "workspace not found" });
+    }
+    const { agent } = (req.body ?? {}) as { agent?: string | null };
+    if (agent !== undefined) {
+      if (agent !== null && !isAgentProvider(agent)) {
+        return reply.code(400).send({ error: "agent must be codex, claude or gemini" });
+      }
+      await setWorkspaceAgent(wid, agent);
+    }
+    return toWorkspace((await getWorkspace(wid))!, "owner");
   });
 
   app.get("/api/workspaces/:wid/members", async (req, reply) => {
@@ -447,6 +476,29 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  /**
+   * Per-project choices. The effort level is checked against what the
+   * workspace's agent accepts, so a level chosen under one agent cannot be
+   * sent to another that would refuse it; null returns to the default.
+   */
+  app.patch("/api/projects/:id/settings", async (req, reply) => {
+    const user = currentUser(req)!;
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { reasoning?: string | null };
+    const project = await requireProjectAccess(user.id, id, "editor");
+    if (!project) return reply.code(404).send({ error: "project not found" });
+    if (body.reasoning !== undefined) {
+      const workspace = project.workspaceId ? await getWorkspace(project.workspaceId) : null;
+      const agent = agents.resolve(workspace?.agent);
+      const value = body.reasoning === null || body.reasoning === "" ? null : String(body.reasoning);
+      if (value !== null && !agent.efforts.includes(value)) {
+        return reply.code(400).send({ error: `effort must be one of ${agent.efforts.join(", ")}` });
+      }
+      await setReasoning(id, value);
+    }
+    return (await getProject(id))!;
+  });
+
   /** Boot (or reuse) the project's dev server and return its URL for the preview iframe. */
   app.post("/api/projects/:id/preview", async (req, reply) => {
     const user = currentUser(req)!;
@@ -459,8 +511,12 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       // instead of starting a second one.
       if (project.port !== port) await setPort(id, port);
       if (project.kind !== "mobile") return { url, device: null };
-      // The phone needs the LAN link and the account Expo Go must match.
-      return { url, device: { url: device, account: await expoAccount(project.dir) } };
+      // The phone needs the LAN link, the account Expo Go must match, and the
+      // SDK its Expo Go must be on.
+      return {
+        url,
+        device: { url: device, account: await expoAccount(project.dir), sdk: expoSdkMajor(project.dir) },
+      };
     } catch (err) {
       return reply.code(500).send({ error: (err as Error).message });
     }
@@ -511,6 +567,32 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * The App Store Connect app id, recorded in eas.json so an iOS build can be
+   * submitted without the CLI stopping to ask for it. Kept as a version of its
+   * own, like the identifiers.
+   */
+  app.post("/api/projects/:id/release/submission", async (req, reply) => {
+    const user = currentUser(req)!;
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { ascAppId?: string };
+    const project = await requireProjectAccess(user.id, id, "editor");
+    if (!project) return reply.code(404).send({ error: "project not found" });
+    if (project.kind !== "mobile") return reply.code(400).send({ error: "only mobile apps are released to the stores" });
+    const ascAppId = String(body.ascAppId ?? "").trim();
+    try {
+      const identity = await runExclusive(id, () => {}, async () => {
+        const next = await setSubmission(project.dir, { ascAppId });
+        const commit = await commitAll(project.dir, "Set the App Store Connect app id");
+        if (commit) await addEdit(id, commit, "Set the App Store Connect app id");
+        return next;
+      });
+      return { ...identity, account: await expoAccount(project.dir) };
+    } catch (err) {
+      return reply.code(400).send({ error: (err as Error).message });
+    }
+  });
+
+  /**
    * Queue EAS cloud builds and, when asked, their store submissions. Returns as
    * soon as EAS has accepted them; the builds themselves take minutes and are
    * read back through the releases list.
@@ -535,6 +617,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       }
       if (!(await expoAccount(project.dir))) {
         return reply.code(400).send({ error: "sign in to Expo first: run `npx expo login` in a terminal, then try again" });
+      }
+      if (submit && platform !== "android" && !identity.ascAppId) {
+        return reply.code(400).send({ error: "add the App Store Connect app id before submitting an iOS build" });
       }
       const releases = await runExclusive(id, () => {}, async () => {
         // Linking writes the project id into app.json; keep that as a version.
@@ -868,23 +953,47 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           if (token) extraEnv.GH_TOKEN = token;
         }
 
+        // A template project's node_modules is a link to the shared install.
+        // A link that went missing leaves the agent unable to type-check or
+        // install anything, so it is restored before the agent starts.
+        if (project.kind !== "repo") {
+          const modules = await ensureSharedModules(project.dir, project.kind).catch(() => "missing" as const);
+          if (modules === "linked") {
+            send({ type: "agent.tool", name: "preview", detail: "Restored the project's link to the shared dependencies" });
+          } else if (modules === "missing") {
+            send({
+              type: "agent.tool",
+              name: "error",
+              detail: "The template's dependencies are not installed; run `npm run setup` in the builder",
+            });
+          }
+        }
+
+        // The workspace chooses the CLI; the project chooses how hard it
+        // thinks. Team memory is wired through Codex's MCP config only.
+        const workspace = project.workspaceId ? await getWorkspace(project.workspaceId) : null;
+        const agent = agents.resolve(workspace?.agent);
+        const effort = project.reasoning ?? agent.defaultEffort(project.kind);
+        const memory = MEMPALACE_ENABLED && agent.id === "codex";
+        send({ type: "agent.tool", name: "agent", detail: effort ? `${agent.label} · ${effort}` : agent.label });
+
         // The app brief is the agent's memory of the whole app; a repository
         // has its own instruction files instead.
         const brief = project.kind === "repo" ? null : await readBrief(project.dir);
         const run = (text: string) =>
-          runCodex({
-            dir: project.dir,
-            prompt: buildPrompt(history, text, { kind: project.kind, github }, MEMPALACE_ENABLED, brief),
-            onEvent: send,
-            extraEnv,
-            network: Boolean(github),
-            memory: MEMPALACE_ENABLED,
-            signal: stopper.signal,
-          }).catch((err): Awaited<ReturnType<typeof runCodex>> => ({
-            ok: false,
-            summary: "",
-            error: (err as Error).message,
-          }));
+          agent
+            .run({
+              dir: project.dir,
+              prompt: buildPrompt(history, text, { kind: project.kind, github }, memory, brief),
+              effort,
+              skillsDir: agents.skillsDir(),
+              onEvent: send,
+              extraEnv,
+              network: Boolean(github),
+              memory,
+              signal: stopper.signal,
+            })
+            .catch((err): RunResult => ({ ok: false, summary: "", error: (err as Error).message }));
 
         let result = await run(prompt);
 

@@ -23,8 +23,8 @@ import {
   MEMPALACE_ENABLED,
   MEMPALACE_SERVER,
   MEMPALACE_URL,
+  BUILTIN_LOCAL_PROVIDERS,
   MODEL_PROVIDER,
-  MODEL_PROVIDER_API,
   MODEL_PROVIDER_KEY_ENV,
   MODEL_PROVIDER_URL,
   USER_CODEX_HOME,
@@ -144,14 +144,16 @@ function configToml(): string {
       "",
     );
   }
-  if (MODEL_PROVIDER) {
-    // A local or self-hosted OpenAI-compatible server. The agent command
-    // selects it with model_provider; this block tells Codex where it is.
+  if (MODEL_PROVIDER && !BUILTIN_LOCAL_PROVIDERS.has(MODEL_PROVIDER)) {
+    // A self-hosted OpenAI-compatible server. The agent command selects it
+    // with model_provider; this block tells Codex where it is. Codex's own
+    // ollama and lmstudio providers are built in and may not be redeclared,
+    // and the Responses API is the only wire protocol it still speaks.
     lines.push(
       `[model_providers.${MODEL_PROVIDER}]`,
       `name = ${JSON.stringify(MODEL_PROVIDER)}`,
       `base_url = ${JSON.stringify(MODEL_PROVIDER_URL)}`,
-      `wire_api = ${JSON.stringify(MODEL_PROVIDER_API)}`,
+      'wire_api = "responses"',
       ...(MODEL_PROVIDER_KEY_ENV ? [`env_key = ${JSON.stringify(MODEL_PROVIDER_KEY_ENV)}`] : []),
       "",
     );
