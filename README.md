@@ -21,6 +21,22 @@ Runner AI. **Powered by [Runner AI](https://therunner.ai).**
 The same chat, agent, history and revert work for all three. The agent runs on **your own
 subscription** through the Codex CLI, or on a **local model** (see below).
 
+## A free, open-source alternative to the hosted builders
+
+Runner Builder does what people use **Lovable, Bolt.new, v0, Replit Agent, Base44, Rork and
+Vibecode** for, without the parts that make them expensive or closed:
+
+| | Hosted builders | Runner Builder |
+|---|---|---|
+| Price | Credits or a monthly plan per builder | Free. Your existing ChatGPT subscription, or a local model at no cost |
+| Where your code lives | Their cloud, exported on request | Your disk, a git repository from the first turn |
+| Model | Theirs, fixed | Codex models today, local models through any OpenAI-compatible server |
+| Mobile | Some; web wrappers or paid tiers | Native Expo apps, phone preview, App Store and Google Play through EAS |
+| Existing codebases | Rarely | Open any GitHub repository, work on a branch, get a pull request |
+| Lock-in | Account, credits, hosting | None. Stop the process and the project is still a normal project on disk |
+
+The trade: you run it yourself, on your machine, with your own accounts. That is the point.
+
 ---
 
 ## What works today
