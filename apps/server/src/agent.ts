@@ -6,6 +6,7 @@ import {
   CODEX_REASONING,
   CODEX_SANDBOX,
   MEMPALACE_SERVER,
+  MODEL_PROVIDER,
   POLICY_UNATTENDED_ROOT_VARIABLE,
   PROJECT_LOG_DIR,
   PROJECTS_DIR,
@@ -340,6 +341,9 @@ export function runCodex(opts: {
       "--skip-git-repo-check",
     ];
     if (network) args.push("-c", "sandbox_workspace_write.network_access=true");
+    // A local or self-hosted model: the provider is declared in the builder's
+    // Codex home (see codexHome.ts); this selects it for the run.
+    if (MODEL_PROVIDER) args.push("-c", `model_provider="${MODEL_PROVIDER}"`);
 
     // MemPalace is read-only, and enforced as such rather than requested.
     //

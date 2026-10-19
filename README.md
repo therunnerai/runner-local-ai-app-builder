@@ -10,6 +10,17 @@ calls your Codex login already makes.
 Open source under the [GNU AGPL-3.0](LICENSE); commercial licenses are available from
 Runner AI. **Powered by [Runner AI](https://therunner.ai).**
 
+## What you can build
+
+| Kind | What it is | Preview | Ship |
+|---|---|---|---|
+| **Web app** | A Vite + React + Tailwind site or web app started from the builder's scaffold | Live Vite dev server in the frame, element picking | **Publish** makes a production build; push to GitHub |
+| **Mobile app** | An Expo (React Native) app for iOS and Android started from the Expo scaffold | Web build in a phone frame, the real app in Expo Go on your phone | **Release** builds in Expo's cloud and submits to TestFlight and Google Play |
+| **Existing repository** | A real codebase cloned from GitHub at a base branch | The repository's own dev server | Every turn is a commit on a feature branch; the builder opens the pull request |
+
+The same chat, agent, history and revert work for all three. The agent runs on **your own
+subscription** through the Codex CLI, or on a **local model** (see below).
+
 ---
 
 ## What works today
@@ -230,6 +241,24 @@ own `Stopped: …` version so it stays revertable, and queued prompts are discar
 Override per run with `BUILDER_MODEL`, `BUILDER_REASONING` and `BUILDER_SANDBOX`.
 Defaults are `gpt-6-astra`, `ultra`, `workspace-write`. `gpt-6-astra` supports
 `low | medium | high | xhigh | max | ultra`.
+
+### Local models
+
+The agent can run on any OpenAI-compatible server on your machine instead of the
+subscription: Ollama, LM Studio, vLLM, llama.cpp. Name the provider and the model and the
+builder declares the server in the agent's Codex home and selects it for every turn:
+
+```bash
+ollama pull gpt-oss:20b
+BUILDER_PROVIDER=ollama BUILDER_MODEL=gpt-oss:20b BUILDER_REASONING=medium npm run dev
+```
+
+`BUILDER_PROVIDER_URL` (default `http://localhost:11434/v1`), `BUILDER_PROVIDER_API`
+(`chat` or `responses`) and `BUILDER_PROVIDER_KEY_ENV` (the name of an env variable holding
+a key, for servers that want one) cover the other servers. Everything else is unchanged:
+the sandbox, one commit per turn, the preview. Expect a local model to be slower and less
+capable than the hosted frontier models on full app builds; it shines for edits and for
+working offline. The ChatGPT login is not needed in this mode.
 
 ---
 

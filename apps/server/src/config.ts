@@ -133,6 +133,19 @@ export const PREVIEW_ENV: Record<string, string> = Object.fromEntries(
 
 /** Model used by the codex agent. Overridable per invocation. */
 export const CODEX_MODEL = process.env.BUILDER_MODEL ?? "gpt-6-astra";
+
+/**
+ * Where the model runs. Empty means the Codex login's own provider (the
+ * person's ChatGPT subscription). Any other value names an OpenAI-compatible
+ * server declared in the agent's Codex home, so a local model is one setting:
+ * BUILDER_PROVIDER=ollama BUILDER_MODEL=gpt-oss:20b. The URL and wire protocol
+ * default to Ollama's; LM Studio, vLLM and llama.cpp servers fit the same shape.
+ */
+export const MODEL_PROVIDER = (process.env.BUILDER_PROVIDER ?? "").trim();
+export const MODEL_PROVIDER_URL = process.env.BUILDER_PROVIDER_URL ?? "http://localhost:11434/v1";
+export const MODEL_PROVIDER_API = process.env.BUILDER_PROVIDER_API === "responses" ? "responses" : "chat";
+/** Name of an env variable holding the provider's API key, for servers that want one. */
+export const MODEL_PROVIDER_KEY_ENV = (process.env.BUILDER_PROVIDER_KEY_ENV ?? "").trim();
 /**
  * Reasoning level for the agent. `gpt-6-astra` supports low | medium | high |
  * xhigh | max | ultra (its own default is medium). Passed to codex as

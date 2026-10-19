@@ -23,6 +23,10 @@ import {
   MEMPALACE_ENABLED,
   MEMPALACE_SERVER,
   MEMPALACE_URL,
+  MODEL_PROVIDER,
+  MODEL_PROVIDER_API,
+  MODEL_PROVIDER_KEY_ENV,
+  MODEL_PROVIDER_URL,
   USER_CODEX_HOME,
 } from "./config.ts";
 
@@ -137,6 +141,18 @@ function configToml(): string {
       'bearer_token_env_var = "MEMPALACE_TOKEN"',
       'enabled_tools = ["mempalace_search", "mempalace_status"]',
       'default_tools_approval_mode = "auto"',
+      "",
+    );
+  }
+  if (MODEL_PROVIDER) {
+    // A local or self-hosted OpenAI-compatible server. The agent command
+    // selects it with model_provider; this block tells Codex where it is.
+    lines.push(
+      `[model_providers.${MODEL_PROVIDER}]`,
+      `name = ${JSON.stringify(MODEL_PROVIDER)}`,
+      `base_url = ${JSON.stringify(MODEL_PROVIDER_URL)}`,
+      `wire_api = ${JSON.stringify(MODEL_PROVIDER_API)}`,
+      ...(MODEL_PROVIDER_KEY_ENV ? [`env_key = ${JSON.stringify(MODEL_PROVIDER_KEY_ENV)}`] : []),
       "",
     );
   }
