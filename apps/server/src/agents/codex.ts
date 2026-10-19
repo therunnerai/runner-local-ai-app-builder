@@ -74,7 +74,23 @@ export class CodexAdapter implements AgentAdapter {
 
   run(opts: RunOptions): Promise<RunResult> {
     const { dir, prompt, effort, onEvent, extraEnv, network, memory, signal } = opts;
-    const args = ["exec", "--json", "-C", dir, "-s", CODEX_SANDBOX, "-m", CODEX_MODEL, "--skip-git-repo-check"];
+    // `--disable apps` keeps Codex's built-in ChatGPT connector server out of
+    // the turn: an unattended agent editing a project has no use for it, its
+    // tool definitions cost tokens on every call, and a small local model was
+    // seen calling one of its tools in a loop until the turn was stopped.
+    const args = [
+      "exec",
+      "--json",
+      "-C",
+      dir,
+      "-s",
+      CODEX_SANDBOX,
+      "-m",
+      CODEX_MODEL,
+      "--skip-git-repo-check",
+      "--disable",
+      "apps",
+    ];
     // Set explicitly rather than inherited from ~/.codex/config.toml, so the
     // app's effort level is the app's decision. A local model without a
     // thinking mode refuses any level, so "none" sends nothing.

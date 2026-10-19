@@ -4,6 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { EAS_TIMEOUT_MS } from "./config.ts";
 import { easBin } from "./expo.ts";
+import { git } from "./git.ts";
 
 const pexec = promisify(execFile);
 
@@ -169,6 +170,51 @@ function easError(err: unknown): Error {
   const text = `${e.stderr ?? ""}\n${e.stdout ?? ""}`.trim();
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
   return new Error(lines.slice(-4).join(" ").slice(0, 600) || e.message || "EAS failed");
+}
+
+/**
+ * EAS builds from a clone of the project's commits. A project scaffolded
+ * before the template's ignore rule matched a link as well as a directory
+ * committed its node_modules link, which arrives on the build machine as a
+ * dangling link into this Mac and breaks the install phase. Untrack it and
+ * fix the rule; the caller commits. Returns whether anything changed.
+ */
+export async function untrackSharedModules(dir: string): Promise<boolean> {
+  const tracked = await git(dir, ["ls-files", "--", "node_modules"]).catch(() => "");
+  if (!tracked) return false;
+  await git(dir, ["rm", "-r", "-q", "--cached", "--", "node_modules"]);
+  const file = path.join(dir, ".gitignore");
+  let ignore = "";
+  try {
+    ignore = await readFile(file, "utf8");
+  } catch {
+    /* no ignore file: one is written below */
+  }
+  if (!ignore.split("\n").some((line) => line.trim() === "node_modules")) {
+    const fixed = ignore.replace(/^node_modules\/[ \t]*$/m, "node_modules");
+    ignore = /^node_modules[ \t]*$/m.test(fixed) ? fixed : `node_modules\n${fixed}`;
+    await writeFile(file, ignore.endsWith("\n") ? ignore : `${ignore}\n`);
+  }
+  return true;
+}
+
+/**
+ * EAS installs with `npm ci`, which refuses a lockfile that disagrees with
+ * package.json, and a project's lockfile drifts: the template's lock is copied
+ * at creation while `npx expo install` and SDK pins move package.json. Resolve
+ * the lock on this machine, without touching the shared node_modules, so the
+ * upload is consistent. Returns whether the lockfile changed; the caller commits.
+ */
+export async function syncLockfile(dir: string): Promise<boolean> {
+  const before = await git(dir, ["status", "--porcelain", "--", "package-lock.json"]).catch(() => "");
+  await pexec("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"], {
+    cwd: dir,
+    timeout: EAS_TIMEOUT_MS,
+    maxBuffer: 32 * 1024 * 1024,
+    env: { ...process.env, CI: "1", NO_COLOR: "1" },
+  });
+  const after = await git(dir, ["status", "--porcelain", "--", "package-lock.json"]).catch(() => "");
+  return after !== before || Boolean(after);
 }
 
 /**

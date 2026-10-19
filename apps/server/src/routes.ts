@@ -34,6 +34,8 @@ import {
   setIdentity,
   setSubmission,
   startBuilds,
+  syncLockfile,
+  untrackSharedModules,
   type ReleasePlatform,
   type ReleaseProfile,
 } from "./release.ts";
@@ -627,6 +629,18 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
           await ensureEasProject(project.dir);
           const commit = await commitAll(project.dir, "Link the EAS project");
           if (commit) await addEdit(id, commit, "Link the EAS project");
+        }
+        // The build machine installs from the commits, so a committed link to
+        // this Mac's shared install must go before the upload.
+        if (await untrackSharedModules(project.dir)) {
+          const commit = await commitAll(project.dir, "Keep node_modules out of the build");
+          if (commit) await addEdit(id, commit, "Keep node_modules out of the build");
+        }
+        // The build machine runs `npm ci`, which refuses a lockfile that has
+        // drifted from package.json; it is resolved here first.
+        if (await syncLockfile(project.dir)) {
+          const commit = await commitAll(project.dir, "Sync the lockfile for the build");
+          if (commit) await addEdit(id, commit, "Sync the lockfile for the build");
         }
         const builds = await startBuilds(project.dir, { platform, profile, submit });
         for (const build of builds) {

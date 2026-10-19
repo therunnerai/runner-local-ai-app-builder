@@ -96,7 +96,10 @@ red screen is caught before anyone sees it. `BUILDER_SELF_CHECK=0` turns this of
 package in `app.json` (a version of its own), links the project to EAS on the first
 build, and queues `eas build` in Expo's cloud for the chosen platforms and profile:
 `preview` for installable test builds, `production` for store-ready ones, optionally with
-`--auto-submit` to TestFlight and the Play internal track. Nothing is compiled on this
+`--auto-submit` to TestFlight and the Play internal track. Before the upload the builder
+untracks a committed `node_modules` link and resolves the project's lockfile against its
+`package.json`, because the build machine installs with `npm ci` and refuses a lockfile
+that has drifted. Nothing is compiled on this
 machine. An Android build creates its signing key in EAS on the first run, unattended;
 an iOS build needs your Apple Developer sign-in once (`npx eas-cli credentials` in the
 project), and an iOS submission needs the **App Store Connect app id** of the app record
@@ -296,7 +299,9 @@ model key.
 Skills reach Codex through its home; Claude Code and Gemini CLI are pointed at the same
 folder (`--add-dir`, `--include-directories`) and told where the skills live, so every
 agent sees the same design and framework guides. Read-only MemPalace memory is wired
-through Codex's MCP configuration only.
+through Codex's MCP configuration only. Codex runs with its built-in ChatGPT connector
+server switched off (`--disable apps`): an unattended agent has no use for it, and its
+tool definitions would ride along on every call.
 
 ### Local models
 
@@ -310,6 +315,11 @@ BUILDER_PROVIDER=ollama BUILDER_MODEL=gpt-oss:20b npm run dev
 
 With a provider set, the default effort is `none`: no reasoning level is sent, which a
 model without a thinking mode needs (one that has it takes `BUILDER_REASONING=medium`).
+Give the server room for a turn: a builder prompt carries a few thousand tokens of
+instructions, the app brief and the tool definitions before the model writes a line, and
+Ollama's default context window is 4096 tokens, which ends a turn with "something went
+wrong". Run Ollama with `OLLAMA_CONTEXT_LENGTH=32768` (or set the context length in the
+Ollama app's settings) and pick a model that supports tool calls.
 `BUILDER_PROVIDER_URL` names the server root when it is not Ollama's
 `http://localhost:11434`. Any other provider name is a self-hosted OpenAI-compatible
 server (vLLM, llama.cpp, a gateway) declared in the agent's Codex home from the required
