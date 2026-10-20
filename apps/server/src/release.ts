@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { EAS_TIMEOUT_MS } from "./config.ts";
 import { easBin } from "./expo.ts";
@@ -211,15 +212,27 @@ export async function untrackSharedModules(dir: string): Promise<boolean> {
  */
 export async function syncLockfile(dir: string): Promise<boolean> {
   const lock = path.join(dir, "package-lock.json");
-  const current = () => readFile(lock, "utf8").catch(() => "");
-  const before = await current();
-  await pexec("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"], {
-    cwd: dir,
-    timeout: EAS_TIMEOUT_MS,
-    maxBuffer: 32 * 1024 * 1024,
-    env: { ...process.env, CI: "1", NO_COLOR: "1" },
-  });
-  return (await current()) !== before;
+  const before = await readFile(lock, "utf8").catch(() => "");
+  // Resolve in a scratch copy with no node_modules. Inside the project npm
+  // shapes the lock after the shared install it finds there, which is not the
+  // tree a clean `npm ci` on the build machine computes.
+  const scratch = await mkdtemp(path.join(os.tmpdir(), "builder-lock-"));
+  try {
+    await copyFile(path.join(dir, "package.json"), path.join(scratch, "package.json"));
+    if (before) await writeFile(path.join(scratch, "package-lock.json"), before);
+    await pexec("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"], {
+      cwd: scratch,
+      timeout: EAS_TIMEOUT_MS,
+      maxBuffer: 32 * 1024 * 1024,
+      env: { ...process.env, CI: "1", NO_COLOR: "1" },
+    });
+    const after = await readFile(path.join(scratch, "package-lock.json"), "utf8");
+    if (after === before) return false;
+    await writeFile(lock, after);
+    return true;
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
 }
 
 /**
